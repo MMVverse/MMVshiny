@@ -48,7 +48,7 @@ LoadStateSpecification <- function(filename) {
   # @param x is a character string representing the column text value to be parsed 
   # (if it is interpreted as a character string it must be valid R literal or NA_character_ or NA or empty string '').
   # @param idType is a character string representing the type of the ID column in the spec data table.
-  # @param colType is a character string representing the type of the column in the spec data table - can be either note or value.
+  # @param colType is a character string representing the type of the column in the spec data table - can be one of note, value, or action.
   # @return a character string representing a valid R expression that can be evaluated using \code{eval(parse(text = value))}.
   ParseValExpr <- function(x, idType, colType) {
     
@@ -68,8 +68,12 @@ LoadStateSpecification <- function(filename) {
         } else {
           "NA_character_"
         }
-      } else {
+      } else if(colType == "action") {
+        "NULL"
+      } else if(colType == "note") {
         "NA_character_"
+      } else {
+        stop("ParseValExpr: colType should be one of 'value', 'note', or 'action'.")
       }
     } else {
       x2
@@ -86,6 +90,12 @@ LoadStateSpecification <- function(filename) {
     spec[ID == id, ExprMINNOTE := ParseValExpr(MINNOTE, idType = type, colType = "note")]
     spec[ID == id, ExprMAX     := ParseValExpr(MAX, idType = type, colType = "value")]
     spec[ID == id, ExprMAXNOTE := ParseValExpr(MAXNOTE, idType = type, colType = "note")]
+    
+    if("ACTIONEXPR" %in% names(spec)) {
+      spec[ID == id, ExprACTION := ParseValExpr(ACTIONEXPR, idType = type, colType = "action")]
+    } else {
+      spec[ID == id, ExprACTION := "NULL"]
+    }
   }
   
   spec
@@ -201,6 +211,9 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
     # average value from the included records corresponding to a parameter in a Science Cloud input file
     scInput = reactiveValues()
     
+    # action handlers for action button inputs (plain list of NULLs or functions, not reactive)
+    actionHandler = list()
+    
     # Science Cloud input ile
     # - NULL: no Science Cloud file uploaded
     # - data.table: Uploaded Science Cloud file limited to the data for the first compound in it and 
@@ -233,7 +246,7 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
   # Create state objects
   tStart3 <- R.utils::System$currentTimeMillis()
   for(id in spec$ID) {
-    if(GetType(id = id, spec = spec) %in% c("numeric input", "text input", "radio input")) {
+    if(GetType(id = id, spec = spec) %in% c("numeric input", "text input", "radio input", "select input")) {
       state$event[[id]] <- "INIT"
       
       state$default[[id]] <- eval(parse(text = spec[ID == id, ExprVAL]))
@@ -270,6 +283,8 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
       } else {
         state$validated[[id]] <- defVal
       }
+    } else if(GetType(id = id, spec = spec) == "action button input") {
+      state$actionHandler[[id]] <- eval(parse(text = spec[ID == id, ExprACTION]))
     } else if(GetType(id = id, spec = spec) == "reactive") {
       state$default[[id]] <- eval(parse(text = spec[ID == id, ExprVAL]))
     }
@@ -308,16 +323,33 @@ GetStateId <- function(state) {
 #' the value of the input field is read from the shiny input object. Otherwise, the
 #' value of the input field from the shiny input object is ignored and this value is
 #' used instead.
+#' @param output the shiny output object - this is passed to the handler of action button 
+#' inputs, but is not used for other input types.
+#' @param session the shiny session object - this is passed to the handler of action button 
+#' inputs, but is not used for other input types.
 #' @return the validated input value based on the user input
 #' @export
-ProcessGuiInputEvent <- function(s, input, id, inputValue) {
+ProcessGuiInputEvent <- function(s, input, id, inputValue, output = NULL, session = getDefaultReactiveDomain()) {
   if(missing(inputValue)) {
     inputValue <- input[[GetGuiId(s,id)]]
   }
   
+  # Action buttons are handled via a countID trigger; they do not participate in validation/displayed.
+  if(s %>% GetType(id) == "action button input") {
+    handler <- s$actionHandler[[id]]
+    if(is.null(handler)) {
+      return(s)
+    }
+    if(!is.function(handler)) {
+      stop("ACTIONEXPR for id=", id, " must evaluate to a function(state, input, output, session).")
+    }
+    handler(state = s, input = input, output = output, session = session)
+    return(s)
+  }
+
   if( (s%>%GetType(id) == "numeric input" && length(inputValue) > 0 && !identical(as.numeric(s%>%GetDisplayed(id)), as.numeric(inputValue)) ) ||
       (s%>%GetType(id) == "text input" && length(inputValue) > 0 && !identical(as.character(s%>%GetDisplayed(id)), as.character(inputValue)) ) ||
-      (s%>%GetType(id) == "radio input" && length(inputValue) > 0 && !identical(as.character(s%>%GetDisplayed(id)), as.character(inputValue)) ) ) {
+      (s%>%GetType(id) %in% c("radio input", "select input") && length(inputValue) > 0 && !identical(as.character(s%>%GetDisplayed(id)), as.character(inputValue)) ) ) {
     
     # The user has changed the value in the GUI input field
     cat2('3.')
@@ -558,10 +590,13 @@ ProcessDisplayedChangedEvent <- function(s, id) {
     UpdateTextInput(inputId = GetGuiId(s, id), value = GetDisplayed(s, id))
   } else if(s%>%GetType(id) == "radio input") {
     UpdateRadioButtons(inputId = GetGuiId(s, id), selected = GetDisplayed(s, id))
+  } else if(s%>%GetType(id) == "select input") {
+    UpdateSelectInput(inputId = GetGuiId(s, id), selected = GetDisplayed(s, id))
   }
   # Restore the current event
   s%>%SetEvent(id, currentEvent)
 }
+
 
 
 #' Reinitialize a state object
@@ -575,7 +610,7 @@ Reset <- function(state) {
   
   for(id in state$spec$ID) {
     
-    if(GetType(state, id) %in% c("numeric input", "text input", "radio input")) {
+    if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input")) {
       SetEvent(state, id, "INIT")
       SetSCInput(state, id, NAVal(state, id = id))
       SetReportInput(state, id, NAVal(state, id = id))
@@ -586,7 +621,7 @@ Reset <- function(state) {
   
   for(id in state$spec$ID) {
     
-    if(GetType(state, id) %in% c("numeric input", "text input", "radio input")) {
+    if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input")) {
       IncrementResetCount(state, id)
     }
   }
@@ -602,7 +637,7 @@ Reset <- function(state) {
 Get <- function(state, id) {
   #cat("Get(",id,")")
   type <- GetType(state, id)
-  if(type %in% c("numeric input", "numeric constant", "text input", "radio input")) {
+  if(type %in% c("numeric input", "numeric constant", "text input", "radio input", "select input")) {
     validated <- state%>%GetValidated(id)
     attributes(validated) <- NULL
     validated
@@ -634,7 +669,7 @@ GetValidationNote <- function(state, id, spec = state$spec) {
 #' For numeric constants the value for id in the SOURCE column of state$spec.
 #' @export
 GetSource <- function(state, id) {
-  if(GetType(state, id) %in% c("numeric input", "text input", "radio input")) {
+  if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input")) {
     status <- GetStatus(state, id)
     status$source
   } else {
@@ -907,7 +942,7 @@ ValidateValue <- function(state, id, value) {
     validated <- state%>%ValidateBoundaries(id, value)
   } else if(GetType(state,id) == "text input") {
     validated <- state%>%ValidateText(id, value)
-  } else if(GetType(state,id) == "radio input") {
+  } else if(GetType(state,id) %in% c("radio input", "select input")) {
     validated <- state%>%ValidateRadio(id, value)
   }
   
@@ -1108,14 +1143,14 @@ ValidateText <- function(state, id, value) {
   }
 }
 
-#' Validate a radio input value
+#' Validate a radio input or select input value
 #' @param state a state object
-#' @param id the id of a radio input parameter.  
+#' @param id the id of a radio or select input parameter.  
 #' @param value a character vector of length 1.
 #' @return if value is within the radio choices for id, the same value is returned, otherwise an error is raised.
 #' @export 
 ValidateRadio <- function(state, id, value) {
-  if(GetType(state,id) == "radio input") {
+  if(GetType(state,id) %in% c("radio input", "select input")) {
     if(!is.character(value) || length(value) != 1) {
       stop("ValidateRadio: the value to validate must be a character string. ")
     } else if(!value %in% GetRadioChoices(state, id)) {
@@ -1129,7 +1164,7 @@ ValidateRadio <- function(state, id, value) {
       value
     }
   } else {
-    stop("ValidateRadio called on id=",id,", which is not a radio input.")
+    stop("ValidateRadio called on id=",id,", which is not a radio or a select input.")
   }
 }
 
@@ -1318,10 +1353,10 @@ GetReportLabel <- function(state, ids, spec = state$spec) {
 #' @return a character vector of the possible choices for the radio input.
 #' @export
 GetRadioChoices <- function(state, id, spec = state$spec) {
-  if(GetType(id = id, spec = spec) == "radio input") {
+  if(GetType(id = id, spec = spec) %in% c("radio input", "select input")) {
     as.character(strsplit(spec[ID == id, RADIOVALUES], split = ":", fixed = TRUE)[[1]])
   } else {
-    stop("GetRadioChoices called for a non-radio input ", id)
+    stop("GetRadioChoices called for a non-radio/select input ", id)
   }
 }
 
@@ -1388,10 +1423,10 @@ SetDisplayed <- function(state, id, value) {
     rounded <- round(value, digs)
     state$displayed[[id]] <- rounded
     
-  } else if(state%>%GetType(id) %in% c("text input", "radio input")) {
+  } else if(state%>%GetType(id) %in% c("text input", "radio input", "select input")) {
     state$displayed[[id]] <- value
   } else {
-    stop("SetDisplayed: id=",id," is not a numeric input, text input, or radio input.")
+    stop("SetDisplayed: id=",id," is not a numeric input, text input, radio input, or select input.")
   }
 }
 
@@ -1461,6 +1496,31 @@ CreateUIInput <- function(state, id, spec = state$spec, useLabel = TRUE, iconVal
     do.call(radioButtons, listArgs)
   }
   
+  else if(GetType(id = id, spec = spec) == "select input") {
+    if(!"choices" %in% names(listArgs)) {
+      listArgs$choices <- GetRadioChoices(id = id, spec = spec)
+    }
+    if(!"selected" %in% names(listArgs)) {
+      listArgs$selected <- NA_character_
+    }
+    # IMPORTANT: Shiny's selectInput() uses selectize.js by default. In that mode the
+    # underlying <select> element is hidden (display: none), so CSS like background-color
+    # applied to the <select> won't be visible. MMVshiny relies on background-color to
+    # indicate default/derived values (e.g., azure), therefore we disable selectize by
+    # default for "select input".
+    if(!"selectize" %in% names(listArgs)) {
+      listArgs$selectize <- FALSE
+    }
+    
+    # make sure that there is no value element as this is not used in selectInput
+    listArgs$value <- NULL
+    do.call(selectInput, listArgs)
+  } else if(GetType(id = id, spec = spec) == "action button input") {
+    # actionButton does not use a value argument
+    listArgs$value <- NULL
+    do.call(actionButton, listArgs)
+  }
+  
   if(spec[ID == id, STATUSICON]) {
     list(tags$td(el), tags$td(valign = iconValign, uiOutput(paste0(guiId,"icon"))))
   } else {
@@ -1521,14 +1581,40 @@ GenerateJavaScriptEventHandlers <- function(spec, ids = spec[grepl("input", TYPE
    });
   '
   
+  codeSelectInput <- 
+    'var nID = 0;
+   // create a handler 
+   $("#ID").bind("change", function(e) {
+     // increment the counter each time selection changes
+     nID++;
+     Shiny.onInputChange("countID", nID);
+   });
+  '
   
-  for(id in ids) {
+    
+  codeActionButton <- 
+    'var nID = 0;
+   // create a handler 
+   $("#ID").bind("click", function(e) {
+     // increment the counter each time button is clicked
+     nID++;
+     Shiny.onInputChange("countID", nID);
+   });
+  '
+
+for(id in ids) {
     
     if( GetType(id = id, spec = spec) %in% c("numeric input", "text input") ) {
       codeToPut <- gsub('ID', id, codeNumericTextInput, fixed = TRUE)
       cat(codeToPut)
     } else if(GetType(id = id, spec = spec) %in% c("radio input")) {
       codeToPut <- gsub('ID', id, codeRadioInput, fixed = TRUE)
+      cat(codeToPut)
+    } else if(GetType(id = id, spec = spec) %in% c("select input")) {
+      codeToPut <- gsub('ID', id, codeSelectInput, fixed = TRUE)
+      cat(codeToPut)
+    } else if(GetType(id = id, spec = spec) %in% c("action button input")) {
+      codeToPut <- gsub('ID', id, codeActionButton, fixed = TRUE)
       cat(codeToPut)
     }
   }    
@@ -1543,7 +1629,8 @@ GenerateJavaScriptEventHandlers <- function(spec, ids = spec[grepl("input", TYPE
 #' 
 #' @param spec parameter specification.
 #' @param inputObjectName a character string indicating the name of the shiny input object (default "input").
-#' @param stateObject a character stirng indicating the name of the MMVSola state object (default: "state").
+#' @param outputObjectName a character string indicating the name of the shiny output object (default "output").
+#' @param stateObjectName a character string indicating the name of the MMVSola state object (default: "state").
 #' @param ids a character vector of ids for which observers should be generated.
 #' @param observerTypes a character vector of observer types to be generated. Possible values 
 #' are "countID", "default", "displayed", "SCInput", "reportInput", "resetCount", "min", "max". Bye default, this
@@ -1559,6 +1646,7 @@ GenerateJavaScriptEventHandlers <- function(spec, ids = spec[grepl("input", TYPE
 GenerateScriptCreatingObservers <- function(
     spec, 
     inputObjectName = 'input', 
+    outputObjectName = 'output',
     stateObjectName = 'state', 
     ids = unique(spec$ID), 
     observerTypes = c("countID", "default", "displayed", "SCInput", "reportInput", "resetCount", "min", "max"),
@@ -1584,9 +1672,9 @@ GenerateScriptCreatingObservers <- function(
       '
   observeEvent(inputObj$countID, {
     cat2("\\nUSER INPUT on ID (count=", inputObj$countID, "): ", sep="")
-    ProcessGuiInputEvent(s = stateObj, input = inputObj, id = "ID")
+    ProcessGuiInputEvent(s = stateObj, input = inputObj, output = outputObj, session = session, id = "ID")
   }, ignoreInit = TRUE)',
-    
+
     default =  
       '
   observeEvent(GetDefault(stateObj, "ID"), {
@@ -1644,12 +1732,12 @@ GenerateScriptCreatingObservers <- function(
     
     # Assemble the code to put
     code <- ""
-    if( type %in% c("numeric input", "text input", "radio input") ) {
+    if( type %in% c("numeric input", "text input", "radio input", "select input", "action button input") ) {
       
       if( "countID" %in% observerTypes ) {
         code <- paste(code, codeTemplates$countID, "\n")
       }
-      if( "displayed" %in% observerTypes ) {
+      if( "displayed" %in% observerTypes && type != "action button input") {
         code <- paste(code, codeTemplates$displayed, "\n")
       }
       if( type == "numeric input" ) {
@@ -1660,6 +1748,7 @@ GenerateScriptCreatingObservers <- function(
           code <- paste(code, codeTemplates$max, "\n")
         }
       }
+
       for( obsType in setdiff(observerTypes, c("countID", "displayed", "min", "max")) ) {
         code <- paste(code, codeTemplates[[obsType]], "\n")
       }
@@ -1667,6 +1756,7 @@ GenerateScriptCreatingObservers <- function(
     
     codeToPut <- gsub('ID', id, code, fixed = TRUE)
     codeToPut <- gsub('inputObj', inputObjectName, codeToPut, fixed = TRUE)
+    codeToPut <- gsub('outputObj', outputObjectName, codeToPut, fixed = TRUE)
     codeToPut <- gsub('stateObj', stateObjectName, codeToPut, fixed = TRUE)
     
     cat(codeToPut)
@@ -1886,6 +1976,43 @@ UpdateRadioButtons <- function(
                      choiceNames = choiceNames, choiceValues = choiceValues)
 }
 
+#' Wrapper of shiny::updateSelectInput that also calls session$setInputs if session is a MockShinySession.
+#' 
+#' @inheritParams shiny::updateSelectInput
+#' @return result of shiny::updateSelectInput.
+#' @details
+#' This function is useful for testing shiny applications with shiny::testSever.
+#' @export
+UpdateSelectInput <- function(
+  session = getDefaultReactiveDomain(),
+  inputId,
+  label = NULL,
+  choices = NULL,
+  selected = NULL,
+  multiple = FALSE,
+  selectize = TRUE,
+  width = NULL,
+  size = NULL
+) {
+  # For unit testing with MockShinySession
+  if(inherits(session, "MockShinySession")) {
+    if(!is.null(selected)) {
+      eval(parse(text = paste0("session$setInputs(", inputId, "='", selected, "')")))
+    }
+  }
+
+  updateSelectInput(
+    session = session,
+    inputId = inputId,
+    label = label,
+    choices = choices,
+    selected = selected#,
+    #multiple = multiple,
+    #selectize = selectize,
+    #width = width
+  )
+}
+
 #' Get the NA value of the correct type corresponding to id
 #' @param state the state object
 #' @param id the id of the input
@@ -1897,6 +2024,8 @@ NAVal <- function(state, id, spec = state$spec) {
                     `numeric input` = NA_real_, 
                     `numeric constant` = NA_real_, 
                     `radio input` = NA_character_,
+                    `select input` = NA_character_,
+                    `action button input` = NULL,
                     `reactive` = NULL)
   type <- GetType(id = id, spec = spec)
   if(!type %in% names(NA_values)) {

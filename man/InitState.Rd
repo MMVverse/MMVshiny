@@ -16,7 +16,7 @@ InitState(
 \item{spec}{a data.table denoting the parameter specification.}
 
 \item{stateId}{a character string to be used as an identifier of this state object in lists of states.
-If this is set to "\if{html}{\out{<auto>}}" (default), the id will be set to "stateX" where X is a unique number
+If this is set to "<auto>" (default), the id will be set to "stateX" where X is a unique number
 for the duration of the session. Unless listObjects defines a prefixGuiId element, the stateId will
 be used as a prefix of GUI inputs for all parameters in the state (see also \code{\link{GetGuiId}}).}
 
@@ -29,7 +29,7 @@ with the names created in the state during initialization (see the full list in 
 an initialized state environment containing the following objects (created in this order):
 \itemize{
 \item MYSTATE: A reference to the state object itself
-\item stateId: The stateId argument or automatically generated unique identifier if "\if{html}{\out{<auto>}}" was passed as the stateId.
+\item stateId: The stateId argument or automatically generated unique identifier if "<auto>" was passed as the stateId.
 \item spec: The spec argument
 \item status: A reactiveValues object containing the status of each input parameter
 \item statusIconClass: A reactiveValues object containing the icon class for the status of each input parameter

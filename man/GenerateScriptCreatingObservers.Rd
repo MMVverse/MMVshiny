@@ -7,6 +7,7 @@
 GenerateScriptCreatingObservers(
   spec,
   inputObjectName = "input",
+  outputObjectName = "output",
   stateObjectName = "state",
   ids = unique(spec$ID),
   observerTypes = c("countID", "default", "displayed", "SCInput", "reportInput",
@@ -19,6 +20,10 @@ GenerateScriptCreatingObservers(
 
 \item{inputObjectName}{a character string indicating the name of the shiny input object (default "input").}
 
+\item{outputObjectName}{a character string indicating the name of the shiny output object (default "output").}
+
+\item{stateObjectName}{a character string indicating the name of the MMVSola state object (default: "state").}
+
 \item{ids}{a character vector of ids for which observers should be generated.}
 
 \item{observerTypes}{a character vector of observer types to be generated. Possible values
@@ -29,8 +34,6 @@ with a GUI label.}
 
 \item{filename}{a character string path to an R-file where the R-code will be generated. If
 not specified a tempfile is created.}
-
-\item{stateObject}{a character stirng indicating the name of the MMVSola state object (default: "state").}
 }
 \value{
 a character string - the filepath to the generated R-script (same as filename if this

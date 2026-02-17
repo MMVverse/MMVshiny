@@ -2,14 +2,14 @@
 % Please edit documentation in R/ProcessState.R
 \name{ValidateRadio}
 \alias{ValidateRadio}
-\title{Validate a radio input value}
+\title{Validate a radio input or select input value}
 \usage{
 ValidateRadio(state, id, value)
 }
 \arguments{
 \item{state}{a state object}
 
-\item{id}{the id of a radio input parameter.}
+\item{id}{the id of a radio or select input parameter.}
 
 \item{value}{a character vector of length 1.}
 }
@@ -17,5 +17,5 @@ ValidateRadio(state, id, value)
 if value is within the radio choices for id, the same value is returned, otherwise an error is raised.
 }
 \description{
-Validate a radio input value
+Validate a radio input or select input value
 }

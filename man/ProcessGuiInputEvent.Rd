@@ -4,7 +4,14 @@
 \alias{ProcessGuiInputEvent}
 \title{Update the state when the user changes the value in a GUI input field}
 \usage{
-ProcessGuiInputEvent(s, input, id, inputValue)
+ProcessGuiInputEvent(
+  s,
+  input,
+  id,
+  inputValue,
+  output = NULL,
+  session = getDefaultReactiveDomain()
+)
 }
 \arguments{
 \item{s}{the state object}
@@ -17,6 +24,12 @@ ProcessGuiInputEvent(s, input, id, inputValue)
 the value of the input field is read from the shiny input object. Otherwise, the
 value of the input field from the shiny input object is ignored and this value is
 used instead.}
+
+\item{output}{the shiny output object - this is passed to the handler of action button
+inputs, but is not used for other input types.}
+
+\item{session}{the shiny session object - this is passed to the handler of action button
+inputs, but is not used for other input types.}
 }
 \value{
 the validated input value based on the user input
