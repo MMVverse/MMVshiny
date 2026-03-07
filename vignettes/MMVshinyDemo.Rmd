@@ -1,0 +1,340 @@
+---
+title: "MMVshiny: a step-by-step demo app"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{MMVshiny: a step-by-step demo app}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = TRUE
+)
+```
+
+This vignette is a guided, *step-by-step* walkthrough of the **MMVshiny demo app** that
+ships with the package.
+
+The demo mirrors the architecture used in the larger MMV applications (MMVSola/MMVFree):
+
+- inputs are specified in a **state specification** (an Excel sheet)
+- MMVshiny generates JavaScript handlers and R scripts for observers/reactives
+- the server processes GUI events via a single **state** object
+
+## Get the demo app files
+
+The demo app is distributed as a zip file in `inst/extdata/`.
+
+```{r locate-demo}
+zip_path <- system.file("extdata", "MMVshinyDemo.zip", package = "MMVshiny")
+stopifnot(nzchar(zip_path))
+zip_path
+```
+
+Unzip it to a temporary folder so we can inspect the files.
+
+```{r unzip-demo}
+app_dir <- file.path(tempdir(), "MMVshinyDemo")
+if (dir.exists(app_dir)) unlink(app_dir, recursive = TRUE)
+utils::unzip(zip_path, exdir = app_dir)
+list.files(app_dir, recursive = TRUE)
+```
+
+You should see the following key files:
+
+- `app.R` – the Shiny application
+- `Resources/MMVshinyDemoParameters.xlsx` – the **state specification**
+- `Resources/FUNCTION_RunSimulation.R` – a small helper implementing a toy simulation
+
+## Step 1: Understand the state specification
+
+The state specification is an Excel sheet that defines *what inputs exist* and *how MMVshiny should
+handle them*.
+
+In the demo, it lives here:
+
+```{r state-spec-path}
+spec_file <- file.path(app_dir, "MMVshinyDemo", "Resources", "MMVshinyDemoParameters.xlsx")
+file.exists(spec_file)
+```
+
+Load the specification using the MMVshiny helper (this is the same entry point used by MMVSola/MMVFree).
+
+```{r load-spec}
+stateSpec <- MMVshiny::LoadStateSpecification(filename = spec_file)
+stateSpec[, .(ID, TYPE, GUILABEL, UNIT, MIN, MAX, OUTOFBOUNDS, VALEXPR, RADIOVALUES, STATUSICON, ACTIONEXPR)]
+```
+
+### What do the columns mean?
+
+The demo uses only a subset of features, but the full sheet follows a consistent schema.
+Below is a practical description of the columns you will most commonly use.
+
+#### Identity and labels
+
+- **`ID`**: the unique identifier for the parameter. This is also used as the GUI id by default.
+- **`GUILABEL`**: label shown next to the input.
+- **`REPORTLABEL`**: label used in reports (tables, exports).
+
+#### Input type and UI choices
+
+- **`TYPE`**: determines how MMVshiny creates the UI and how events are handled.
+  Common values include `numeric input`, `text input`, `select input`, `radio input`, `action button input`.
+- **`RADIOVALUES`**: options for radio/select inputs. In the demo it uses the format
+  `Once daily:Twice daily`.
+
+#### Units and formatting
+
+- **`UNIT`**: a unit string (displayed in UI and/or reports).
+- **`DECDIGITS`**: number of decimals to display.
+
+#### Validation
+
+- **`MIN` / `MAX`**: numeric bounds.
+- **`MINNOTE` / `MAXNOTE`**: free-text explanations of the bounds.
+- **`OUTOFBOUNDS`**: what to do if the user value violates bounds.
+  For example, `keep with error` keeps the value but marks the input as invalid.
+
+#### Defaults, reactive defaults, and provenance
+
+- **`VALEXPR`**: an expression that determines the *default* (or a *reactive default*) for an input.
+  In this demo, `Regimen` has a **reactive** default that depends on `Weight_kg`.
+- **`DEFAULTVALUENOTE`**: explanation for the default.
+- **`SOURCE`**: where the value came from (e.g. user input vs. generated/default).
+
+#### Status icons and writeability
+
+- **`STATUSICON`**: whether MMVshiny should render a small status icon next to the input (valid/invalid/source).
+- **`WRITEABLE`**: whether the user can edit the input.
+
+#### Scenario calculation fields
+
+These columns are used in some MMV apps to support *scenario calculations*:
+
+- **`SCFILTER`**, **`SCVALUE`**
+
+They are present for schema consistency; the demo does not use them.
+
+#### Action buttons
+
+- **`ACTIONEXPR`**: only relevant for `action button input` rows. This is an R function that MMVshiny can call
+  when the button event is processed.
+
+In the demo, the `RunSim` row defines an action that runs a toy simulation and stores results into the state.
+
+## Step 2: Walk through `app.R`
+
+Open the app source (we show it as text here, but you can open it in any editor):
+
+```{r app-source-path}
+app_file <- file.path(app_dir, "MMVshinyDemo", "app.R")
+file.exists(app_file)
+```
+
+Below we follow the same section headers used in `app.R` (comments ending in `----`).
+
+### LOAD INPUT SPEC ----
+
+```{r load-input-spec, eval=FALSE}
+stateSpec <- MMVshiny::LoadStateSpecification(
+  filename = "Resources/MMVshinyDemoParameters.xlsx"
+)
+```
+
+This is the single source of truth for:
+
+- which inputs exist
+- how they should be validated
+- how defaults are computed
+- (optionally) what action buttons do
+
+### GENERATE SCRIPTS ----
+
+MMVshiny generates the “plumbing” code at app start.
+
+#### Generate reactive getters inside the state ----
+
+This creates functions like `state$Weight_kg()` and `state$Compound()` so your server logic
+can read inputs in a consistent way.
+
+```{r gen-reactives, eval=FALSE}
+scriptCreateReactivesInState.R <- MMVshiny::GenerateScriptCreatingReactives(
+  stateSpec,
+  stateObjectName = "MYSTATE",
+  filename = "Resources/Generated/CreateReactivesInState.R"
+)
+```
+
+#### Generate observers inside the state ----
+
+The demo generates two kinds:
+
+1. **Reset observers**: initialize (and re-initialize) all values by processing a reset event.
+2. **Default observers**: evaluate reactive defaults (here only `Regimen`).
+
+```{r gen-state-observers, eval=FALSE}
+scriptObserveResetCountInState.R <- MMVshiny::GenerateScriptCreatingObservers(
+  stateSpec,
+  stateObjectName = "MYSTATE",
+  observerTypes = c("resetCount"),
+  filename = "Resources/Generated/ObserveResetCountInState.R"
+)
+
+scriptObserveDefaultInState.R <- MMVshiny::GenerateScriptCreatingObservers(
+  stateSpec,
+  stateObjectName = "MYSTATE",
+  observerTypes = c("default"),
+  ids = c("Regimen"),
+  filename = "Resources/Generated/ObserveDefaultInState.R"
+)
+
+scriptsToSourceInState <- c(
+  scriptCreateReactivesInState.R,
+  scriptObserveResetCountInState.R,
+  scriptObserveDefaultInState.R
+)
+```
+
+#### Generate observers in the server ----
+
+These observers do two key jobs:
+
+- respond to user edits (via `count<ID>` inputs) and call `ProcessGuiInputEvent()`
+- push state changes back to the GUI (the `displayed` observer)
+
+```{r gen-server-observers, eval=FALSE}
+scriptObserveEventsInServer.R <- MMVshiny::GenerateScriptCreatingObservers(
+  stateSpec,
+  stateObjectName = "state",
+  observerTypes = c("countID", "displayed"),
+  filename = "Resources/Generated/ObserveEventsInServer.R"
+)
+```
+
+#### Generate status icons ----
+
+If `STATUSICON == TRUE`, MMVshiny can render small icons next to inputs to communicate
+validity and source.
+
+```{r gen-status-icons, eval=FALSE}
+scriptRenderStatusIcons.R <- MMVshiny::GenerateScriptRenderingIcons(
+  stateSpec,
+  prefixGuiId = "",
+  stateObjectName = "state",
+  filename = "Resources/Generated/RenderStatusIcons.R"
+)
+```
+
+### UI ----
+
+MMVshiny relies on a small piece of JavaScript to detect when a user has “committed” a change
+(press Enter or click outside a text field). The handler increments `input$count<ID>`.
+
+```{r gen-js, eval=FALSE}
+scriptHandleEvents.js <- MMVshiny::GenerateJavaScriptEventHandlers(
+  stateSpec,
+  filename = "www/Generated/HandleEvents.js"
+)
+
+ui <- fluidPage(
+  includeScript(scriptHandleEvents.js),
+  ...
+)
+```
+
+The actual inputs are created from the spec using `CreateUIInput()`.
+
+```{r create-ui-inputs, eval=FALSE}
+tags$table(
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Compound", useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Weight_kg", useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Height_cm", useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Regimen", useLabel = TRUE))
+)
+
+MMVshiny::CreateUIInput(spec = stateSpec, id = "RunSim")
+```
+
+### SERVER ----
+
+The server starts by creating a single state object.
+
+```{r init-state, eval=FALSE}
+state <- MMVshiny::InitState(
+  stateSpec,
+  listObjects = list(
+    prefixGuiId = "",
+    result = shiny::reactiveVal(NULL),
+    lastSummary = shiny::reactiveVal(NULL)
+  ),
+  scriptsToSource = scriptsToSourceInState
+)
+```
+
+Then it sources the generated scripts:
+
+```{r source-generated, eval=FALSE}
+source(scriptRenderStatusIcons.R, local = TRUE)
+source(scriptObserveEventsInServer.R, local = TRUE)
+```
+
+#### Where does the simulation run?
+
+The state spec row `RunSim` is of type `action button input`.
+When the user clicks the button, MMVshiny processes the GUI event and (because `ACTIONEXPR` is defined)
+executes the action function.
+
+That action stores results into:
+
+- `state$result()` – time-course data for plotting / tables
+- `state$lastSummary()` – a small summary list used by `output$summary`
+
+Your server outputs then become straightforward:
+
+```{r outputs, eval=FALSE}
+output$summary <- renderText({
+  s <- state$lastSummary()
+  if (is.null(s)) return("Click 'Run simulation' to generate results.")
+  paste0(
+    "Compound: ", state$Compound(), "\n",
+    "Regimen: ", s$regimen, "\n",
+    "BMI: ", round(s$bmi, 1), "\n",
+    "Suggested daily dose (toy): ", s$dose_mg, " mg"
+  )
+})
+
+output$plot <- renderPlot({
+  res <- state$result()
+  if (is.null(res) || nrow(res) == 0) return(NULL)
+  plot(res$time_h, res$conc, type = "l", xlab = "Time (h)", ylab = "Concentration (a.u.)")
+})
+```
+
+## Step 3: Run the demo app
+
+To run the demo from an installed MMVshiny package:
+
+```{r run-demo, eval=FALSE}
+zip_path <- system.file("extdata", "MMVshinyDemo.zip", package = "MMVshiny")
+app_dir <- file.path(tempdir(), "MMVshinyDemo")
+if (dir.exists(app_dir)) unlink(app_dir, recursive = TRUE)
+utils::unzip(zip_path, exdir = app_dir)
+
+# The zip contains the folder "MMVshinyDemo" which includes app.R
+shiny::runApp(file.path(app_dir, "MMVshinyDemo"))
+```
+
+## Where to go next
+
+To adapt this pattern for your own app:
+
+1. Create your own Excel state specification.
+2. Use `CreateUIInput()` to generate the UI elements.
+3. Generate scripts for observers/reactives and source them.
+4. Put your domain logic in:
+   - reactive defaults (`VALEXPR`)
+   - action buttons (`ACTIONEXPR`)
+   - server outputs consuming `state$<ID>()` getters.

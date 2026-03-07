@@ -33,7 +33,7 @@
 #' @return a data.table representing the input specification data with added columns
 #' ExprVAL, ExprDEFNOTE, ExprMIN, ExprMINNOTE, ExprMAX, and ExprMAXNOTE. An
 #' error is thrown if some of the IDs are duplicated. 
-#' @importFrom xlsx read.xlsx
+#' @importFrom readxl read_excel
 #' @importFrom data.table as.data.table 
 #' @importFrom data.table setkey
 #' @importFrom data.table is.data.table
@@ -42,7 +42,8 @@
 #' @importFrom shiny reactiveValues
 #' @export  
 LoadStateSpecification <- function(filename) {
-  spec <- as.data.table(read.xlsx(filename, sheetIndex = 1, stringsAsFactors = FALSE))
+  spec <- as.data.table(read_excel(filename))
+  spec <- normalize_newlines(spec)
   
   # Replace 'Get(' with 'state%>%Get(' in R-code columns of spec
   # @param x is a character string representing the column text value to be parsed 
@@ -2343,6 +2344,14 @@ GetSCRawData <- function(state, copy=FALSE) {
 # -------------------------------------------------------------------------#
 # Other helpers ----
 # -------------------------------------------------------------------------#
+
+normalize_newlines <- function(dt) {
+  char_cols <- names(dt)[sapply(dt, is.character)]
+  dt[, (char_cols) := lapply(.SD, function(x)
+    gsub("\r\n?", "\n", x)
+  ), .SDcols = char_cols]
+  dt
+}
 
 #' A function which cats depending on \code{getOption("MMVshiny.verbose", FALSE)}
 #'

@@ -1,7 +1,7 @@
 Package: MMVshiny
 Type: Package
 Title: Functions handling reactive inputs and parameter specification in Shiny apps.
-Version: 1.1.0
+Version: 1.1.1
 Authors@R: c(person("Venelin", "Mitov", email = "venelin.mitov@intiquan.com",
                     comment = '<a href="https://intiquan.com">IntiQuan AG</a>',
                     role = c("aut", "cre", "cph")))
@@ -19,10 +19,9 @@ Depends:
 LazyData: true
 Imports: 
     data.table,
-    xlsx,
+    readxl,
     shiny
-Suggests: 
-    knitr,
+Suggests: knitr,
     rmarkdown,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
