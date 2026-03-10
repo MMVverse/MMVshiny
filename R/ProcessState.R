@@ -1523,9 +1523,9 @@ CreateUIInput <- function(state, id, spec = state$spec, useLabel = TRUE, iconVal
   }
   
   if(spec[ID == id, STATUSICON]) {
-    list(tags$td(el), tags$td(valign = iconValign, uiOutput(paste0(guiId,"icon"))))
+    list(tags$td(class = "mmv-input-cell", el), tags$td(class = "mmv-icon-cell", valign = iconValign, uiOutput(paste0(guiId,"icon"))))
   } else {
-    list(tags$td(el))
+    list(tags$td(class = "mmv-input-cell", el))
   }
 }
 
