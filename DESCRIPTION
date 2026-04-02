@@ -1,7 +1,7 @@
 Package: MMVshiny
 Type: Package
 Title: Functions handling reactive inputs and parameter specification in Shiny apps.
-Version: 1.1.2
+Version: 1.1.3
 Authors@R: c(person("Venelin", "Mitov", email = "venelin.mitov@intiquan.com",
                     comment = '<a href="https://intiquan.com">IntiQuan AG</a>',
                     role = c("aut", "cre", "cph")))
