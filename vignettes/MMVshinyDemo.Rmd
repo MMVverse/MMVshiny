@@ -82,7 +82,10 @@ Below is a practical description of the columns you will most commonly use.
 #### Input type and UI choices
 
 - **`TYPE`**: determines how MMVshiny creates the UI and how events are handled.
-  Common values include `numeric input`, `text input`, `select input`, `radio input`, `action button input`.
+  Common values include `numeric input`, `text input`, `select input`, `radio input`,
+  `checkbox input`, and `action button input`.
+  A `checkbox input` row renders as `checkboxInput()` and its reactive getter returns a logical
+  (`TRUE`/`FALSE`). The default value is set via `VALEXPR` (e.g. `"TRUE"` for an initially-checked box).
 - **`RADIOVALUES`**: options for radio/select inputs. In the demo it uses the format
   `Once daily:Twice daily`.
 
@@ -249,13 +252,24 @@ The actual inputs are created from the spec using `CreateUIInput()`.
 
 ```{r create-ui-inputs, eval=FALSE}
 tags$table(
-  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Compound", useLabel = TRUE)),
-  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Weight_kg", useLabel = TRUE)),
-  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Height_cm", useLabel = TRUE)),
-  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Regimen", useLabel = TRUE))
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Compound",   useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Weight_kg",  useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Height_cm",  useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Regimen",    useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "ShowCurve",  useLabel = TRUE))
 )
 
 MMVshiny::CreateUIInput(spec = stateSpec, id = "RunSim")
+```
+
+The `ShowCurve` row has `TYPE = "checkbox input"`. Its getter `state$ShowCurve()` returns a
+logical and can be read in any server output:
+
+```{r checkbox-output, eval=FALSE}
+output$plot <- renderPlot({
+  if (!isTRUE(state$ShowCurve())) return(NULL)
+  # ... render the plot ...
+})
 ```
 
 ### SERVER ----
