@@ -10,6 +10,8 @@ GetValidationNote(state, id, spec = state$spec)
 \item{state}{a state object.}
 
 \item{id}{a character string id.}
+
+\item{spec}{the parameter specification table. Default: \code{state$spec}.}
 }
 \value{
 a character vector.

@@ -14,12 +14,12 @@ GenerateScriptCreatingReactives(
 \arguments{
 \item{spec}{parameter specification table.}
 
+\item{stateObjectName}{a character string indicating the name of the MMVSola state object (default: "state").}
+
 \item{ids}{a character vector of ids for which reactive objects should be created. Default is all ids in spec.}
 
 \item{filename}{a character string path to an R-file where the R-code will be generated. If
 not specified a tempfile is created.}
-
-\item{stateObject}{a character stirng indicating the name of the MMVSola state object (default: "state").}
 }
 \value{
 a character string - the filepath to the generated R-script (same as filename if this

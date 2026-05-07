@@ -162,6 +162,9 @@ NextStateId <- function() {
 #' * objects created from the listObjects argument
 #' * objects created from sourcing the R scripts in the scriptsToSource argument
 #' 
+#' @param FLAG_ignoreNameConflicts logical; if `TRUE`, skip the check for name conflicts between
+#'   listObjects and the names created internally during state initialization.
+#' @importFrom R.utils System
 #' @export
 #' @md
 InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreNameConflicts = FALSE, scriptsToSource = NULL) {
@@ -606,6 +609,7 @@ ProcessDisplayedChangedEvent <- function(s, id) {
 #' Reinitialize a state object
 #' @param state the state object.
 #' @return nothing - calling this function only has side effects.
+#' @importFrom shinyjs enable
 #' @export
 Reset <- function(state) {
   cat("\n\n==================================\n==================RESET=================\n\n")
@@ -653,6 +657,7 @@ Get <- function(state, id) {
 #' Get validation note for validated value for id in a state object
 #' @param state a state object.
 #' @param id a character string id.
+#' @param spec the parameter specification table. Default: `state$spec`.
 #' @return a character vector.
 #' @export
 GetValidationNote <- function(state, id, spec = state$spec) {
@@ -938,8 +943,11 @@ Validate <- function(state, id, logMessage) {
   
 }
 
-#' Get the validated value for id given a suggested value, without updating 
+#' Get the validated value for id given a suggested value, without updating
 #' the validated state for id
+#' @param state a state object.
+#' @param id a character string id.
+#' @param value the suggested value to validate.
 #' @return the validated value corresponding to value
 ValidateValue <- function(state, id, value) {
   if(GetType(state,id) %in% c("numeric input")) {
@@ -1335,7 +1343,9 @@ IncrementResetCount <- function(state, id) {
 }
 
 #' Get the GUILABEL for one or several ID's in the spec
-#' @param ids a character vector indicating ids for which the GUILABEL should be returned
+#' @param state a state object.
+#' @param ids a character vector indicating ids for which the GUILABEL should be returned.
+#' @param spec the parameter specification table. Default: `state$spec`.
 #' @return a character vector
 #'
 #' @export
@@ -1344,7 +1354,9 @@ GetGuiLabel <- function(state, ids, spec = state$spec) {
 }
 
 #' Get the REPORTLABEL for one or several ID's in the spec
-#' @param ids a character vector indicating ids for which the REPORTLABEL should be returned
+#' @param state a state object.
+#' @param ids a character vector indicating ids for which the REPORTLABEL should be returned.
+#' @param spec the parameter specification table. Default: `state$spec`.
 #' @return a character vector
 #' @export
 GetReportLabel <- function(state, ids, spec = state$spec) {
@@ -1794,8 +1806,8 @@ GenerateScriptCreatingObservers <- function(
 #' @param spec parameter specification table.
 #' @param prefixGuiId a character string indicating the prefix for the gui id (default ""). 
 #' @param outputObjectName a character string indicating the name of the shiny output object (default "output").
-#' @param stateObject a character stirng indicating the name of the MMVSola state object (default: "state").
-#' @param ids a character vector of ids for which status icons should be rendered. Default is all ids in spec with 
+#' @param stateObjectName a character string indicating the name of the MMVSola state object (default: "state").
+#' @param ids a character vector of ids for which status icons should be rendered. Default is all ids in spec with
 #' STATUSICON == TRUE.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
@@ -1852,7 +1864,7 @@ GenerateScriptRenderingIcons <- function(
 
 #' Generate an R script creating reactive objects inside the server function for each value in state
 #' @param spec parameter specification table.
-#' @param stateObject a character stirng indicating the name of the MMVSola state object (default: "state").
+#' @param stateObjectName a character string indicating the name of the MMVSola state object (default: "state").
 #' @param ids a character vector of ids for which reactive objects should be created. Default is all ids in spec.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
@@ -2007,11 +2019,15 @@ UpdateRadioButtons <- function(
 }
 
 #' Wrapper of shiny::updateSelectInput that also calls session$setInputs if session is a MockShinySession.
-#' 
+#'
 #' @inheritParams shiny::updateSelectInput
+#' @param multiple logical; whether to allow multiple selection.
+#' @param selectize logical; whether to use the selectize.js plugin.
+#' @param width the width of the input.
+#' @param size number of items to show in the selection box.
 #' @return result of shiny::updateSelectInput.
 #' @details
-#' This function is useful for testing shiny applications with shiny::testSever.
+#' This function is useful for testing shiny applications with shiny::testServer.
 #' @export
 UpdateSelectInput <- function(
   session = getDefaultReactiveDomain(),
@@ -2225,9 +2241,9 @@ CalculateSCInputs <- function(state, ids, flagSetEvent = TRUE, flagSynchronous =
 
 #' Column names of the Science Cloud input file in the preferred order.
 #'
-#' @return a character vector of the row Science Cloud column names in the order they 
+#' @return a character vector of the row Science Cloud column names in the order they
 #' should be displayed in the GUI and the report excel sheet "Science Cloud Input"
-#' 
+#' @importFrom tibble tribble
 #' @export
 SCColumns <- function() {
   d <- data.table::as.data.table(
