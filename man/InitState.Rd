@@ -23,6 +23,9 @@ be used as a prefix of GUI inputs for all parameters in the state (see also \cod
 \item{listObjects}{a named list of objects to be added to the state environment. No checks are done for conflicts
 with the names created in the state during initialization (see the full list in the Value section).}
 
+\item{FLAG_ignoreNameConflicts}{logical; if \code{TRUE}, skip the check for name conflicts between
+listObjects and the names created internally during state initialization.}
+
 \item{scriptsToSource}{a character vector of script file paths to source in the state environment.}
 }
 \value{

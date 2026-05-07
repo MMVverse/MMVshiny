@@ -7,6 +7,13 @@ the validated state for id}
 \usage{
 ValidateValue(state, id, value)
 }
+\arguments{
+\item{state}{a state object.}
+
+\item{id}{a character string id.}
+
+\item{value}{the suggested value to validate.}
+}
 \value{
 the validated value corresponding to value
 }

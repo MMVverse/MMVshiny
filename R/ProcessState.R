@@ -162,6 +162,9 @@ NextStateId <- function() {
 #' * objects created from the listObjects argument
 #' * objects created from sourcing the R scripts in the scriptsToSource argument
 #' 
+#' @param FLAG_ignoreNameConflicts logical; if `TRUE`, skip the check for name conflicts between
+#'   listObjects and the names created internally during state initialization.
+#' @importFrom R.utils System
 #' @export
 #' @md
 InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreNameConflicts = FALSE, scriptsToSource = NULL) {
@@ -247,7 +250,7 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
   # Create state objects
   tStart3 <- R.utils::System$currentTimeMillis()
   for(id in spec$ID) {
-    if(GetType(id = id, spec = spec) %in% c("numeric input", "text input", "radio input", "select input")) {
+    if(GetType(id = id, spec = spec) %in% c("numeric input", "text input", "radio input", "select input", "checkbox input")) {
       state$event[[id]] <- "INIT"
       
       state$default[[id]] <- eval(parse(text = spec[ID == id, ExprVAL]))
@@ -350,7 +353,8 @@ ProcessGuiInputEvent <- function(s, input, id, inputValue, output = NULL, sessio
 
   if( (s%>%GetType(id) == "numeric input" && length(inputValue) > 0 && !identical(as.numeric(s%>%GetDisplayed(id)), as.numeric(inputValue)) ) ||
       (s%>%GetType(id) == "text input" && length(inputValue) > 0 && !identical(as.character(s%>%GetDisplayed(id)), as.character(inputValue)) ) ||
-      (s%>%GetType(id) %in% c("radio input", "select input") && length(inputValue) > 0 && !identical(as.character(s%>%GetDisplayed(id)), as.character(inputValue)) ) ) {
+      (s%>%GetType(id) %in% c("radio input", "select input") && length(inputValue) > 0 && !identical(as.character(s%>%GetDisplayed(id)), as.character(inputValue)) ) ||
+      (s%>%GetType(id) == "checkbox input" && length(inputValue) > 0 && !identical(isTRUE(s%>%GetDisplayed(id)), isTRUE(inputValue)) ) ) {
     
     # The user has changed the value in the GUI input field
     cat2('3.')
@@ -593,6 +597,8 @@ ProcessDisplayedChangedEvent <- function(s, id) {
     UpdateRadioButtons(inputId = GetGuiId(s, id), selected = GetDisplayed(s, id))
   } else if(s%>%GetType(id) == "select input") {
     UpdateSelectInput(inputId = GetGuiId(s, id), selected = GetDisplayed(s, id))
+  } else if(s%>%GetType(id) == "checkbox input") {
+    UpdateCheckboxInput(inputId = GetGuiId(s, id), value = isTRUE(GetDisplayed(s, id)))
   }
   # Restore the current event
   s%>%SetEvent(id, currentEvent)
@@ -603,6 +609,7 @@ ProcessDisplayedChangedEvent <- function(s, id) {
 #' Reinitialize a state object
 #' @param state the state object.
 #' @return nothing - calling this function only has side effects.
+#' @importFrom shinyjs enable
 #' @export
 Reset <- function(state) {
   cat("\n\n==================================\n==================RESET=================\n\n")
@@ -611,7 +618,7 @@ Reset <- function(state) {
   
   for(id in state$spec$ID) {
     
-    if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input")) {
+    if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input", "checkbox input")) {
       SetEvent(state, id, "INIT")
       SetSCInput(state, id, NAVal(state, id = id))
       SetReportInput(state, id, NAVal(state, id = id))
@@ -622,7 +629,7 @@ Reset <- function(state) {
   
   for(id in state$spec$ID) {
     
-    if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input")) {
+    if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input", "checkbox input")) {
       IncrementResetCount(state, id)
     }
   }
@@ -638,7 +645,7 @@ Reset <- function(state) {
 Get <- function(state, id) {
   #cat("Get(",id,")")
   type <- GetType(state, id)
-  if(type %in% c("numeric input", "numeric constant", "text input", "radio input", "select input")) {
+  if(type %in% c("numeric input", "numeric constant", "text input", "radio input", "select input", "checkbox input")) {
     validated <- state%>%GetValidated(id)
     attributes(validated) <- NULL
     validated
@@ -650,6 +657,7 @@ Get <- function(state, id) {
 #' Get validation note for validated value for id in a state object
 #' @param state a state object.
 #' @param id a character string id.
+#' @param spec the parameter specification table. Default: `state$spec`.
 #' @return a character vector.
 #' @export
 GetValidationNote <- function(state, id, spec = state$spec) {
@@ -670,7 +678,7 @@ GetValidationNote <- function(state, id, spec = state$spec) {
 #' For numeric constants the value for id in the SOURCE column of state$spec.
 #' @export
 GetSource <- function(state, id) {
-  if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input")) {
+  if(GetType(state, id) %in% c("numeric input", "text input", "radio input", "select input", "checkbox input")) {
     status <- GetStatus(state, id)
     status$source
   } else {
@@ -935,8 +943,11 @@ Validate <- function(state, id, logMessage) {
   
 }
 
-#' Get the validated value for id given a suggested value, without updating 
+#' Get the validated value for id given a suggested value, without updating
 #' the validated state for id
+#' @param state a state object.
+#' @param id a character string id.
+#' @param value the suggested value to validate.
 #' @return the validated value corresponding to value
 ValidateValue <- function(state, id, value) {
   if(GetType(state,id) %in% c("numeric input")) {
@@ -945,8 +956,11 @@ ValidateValue <- function(state, id, value) {
     validated <- state%>%ValidateText(id, value)
   } else if(GetType(state,id) %in% c("radio input", "select input")) {
     validated <- state%>%ValidateRadio(id, value)
+  } else if(GetType(state,id) == "checkbox input") {
+    validated <- isTRUE(value)
+    state%>%SetStatus(id, validationNote = paste0("OK:", validated))
   }
-  
+
   validated
 }
 
@@ -1329,7 +1343,9 @@ IncrementResetCount <- function(state, id) {
 }
 
 #' Get the GUILABEL for one or several ID's in the spec
-#' @param ids a character vector indicating ids for which the GUILABEL should be returned
+#' @param state a state object.
+#' @param ids a character vector indicating ids for which the GUILABEL should be returned.
+#' @param spec the parameter specification table. Default: `state$spec`.
 #' @return a character vector
 #'
 #' @export
@@ -1338,7 +1354,9 @@ GetGuiLabel <- function(state, ids, spec = state$spec) {
 }
 
 #' Get the REPORTLABEL for one or several ID's in the spec
-#' @param ids a character vector indicating ids for which the REPORTLABEL should be returned
+#' @param state a state object.
+#' @param ids a character vector indicating ids for which the REPORTLABEL should be returned.
+#' @param spec the parameter specification table. Default: `state$spec`.
 #' @return a character vector
 #' @export
 GetReportLabel <- function(state, ids, spec = state$spec) {
@@ -1424,10 +1442,10 @@ SetDisplayed <- function(state, id, value) {
     rounded <- round(value, digs)
     state$displayed[[id]] <- rounded
     
-  } else if(state%>%GetType(id) %in% c("text input", "radio input", "select input")) {
+  } else if(state%>%GetType(id) %in% c("text input", "radio input", "select input", "checkbox input")) {
     state$displayed[[id]] <- value
   } else {
-    stop("SetDisplayed: id=",id," is not a numeric input, text input, radio input, or select input.")
+    stop("SetDisplayed: id=",id," is not a numeric input, text input, radio input, select input, or checkbox input.")
   }
 }
 
@@ -1516,6 +1534,9 @@ CreateUIInput <- function(state, id, spec = state$spec, useLabel = TRUE, iconVal
     # make sure that there is no value element as this is not used in selectInput
     listArgs$value <- NULL
     do.call(selectInput, listArgs)
+  } else if(GetType(id = id, spec = spec) == "checkbox input") {
+    if(is.na(listArgs$value)) listArgs$value <- FALSE
+    do.call(checkboxInput, listArgs)
   } else if(GetType(id = id, spec = spec) == "action button input") {
     # actionButton does not use a value argument
     listArgs$value <- NULL
@@ -1593,9 +1614,19 @@ GenerateJavaScriptEventHandlers <- function(spec, ids = spec[grepl("input", TYPE
   '
   
     
-  codeActionButton <- 
+  codeCheckboxInput <-
     'var nID = 0;
-   // create a handler 
+   // create a handler
+   $("#ID").bind("change", function(e) {
+     // increment the counter each time checkbox state changes
+     nID++;
+     Shiny.onInputChange("countID", nID);
+   });
+  '
+
+  codeActionButton <-
+    'var nID = 0;
+   // create a handler
    $("#ID").bind("click", function(e) {
      // increment the counter each time button is clicked
      nID++;
@@ -1604,7 +1635,7 @@ GenerateJavaScriptEventHandlers <- function(spec, ids = spec[grepl("input", TYPE
   '
 
 for(id in ids) {
-    
+
     if( GetType(id = id, spec = spec) %in% c("numeric input", "text input") ) {
       codeToPut <- gsub('ID', id, codeNumericTextInput, fixed = TRUE)
       cat(codeToPut)
@@ -1613,6 +1644,9 @@ for(id in ids) {
       cat(codeToPut)
     } else if(GetType(id = id, spec = spec) %in% c("select input")) {
       codeToPut <- gsub('ID', id, codeSelectInput, fixed = TRUE)
+      cat(codeToPut)
+    } else if(GetType(id = id, spec = spec) %in% c("checkbox input")) {
+      codeToPut <- gsub('ID', id, codeCheckboxInput, fixed = TRUE)
       cat(codeToPut)
     } else if(GetType(id = id, spec = spec) %in% c("action button input")) {
       codeToPut <- gsub('ID', id, codeActionButton, fixed = TRUE)
@@ -1733,7 +1767,7 @@ GenerateScriptCreatingObservers <- function(
     
     # Assemble the code to put
     code <- ""
-    if( type %in% c("numeric input", "text input", "radio input", "select input", "action button input") ) {
+    if( type %in% c("numeric input", "text input", "radio input", "select input", "action button input", "checkbox input") ) {
       
       if( "countID" %in% observerTypes ) {
         code <- paste(code, codeTemplates$countID, "\n")
@@ -1772,8 +1806,8 @@ GenerateScriptCreatingObservers <- function(
 #' @param spec parameter specification table.
 #' @param prefixGuiId a character string indicating the prefix for the gui id (default ""). 
 #' @param outputObjectName a character string indicating the name of the shiny output object (default "output").
-#' @param stateObject a character stirng indicating the name of the MMVSola state object (default: "state").
-#' @param ids a character vector of ids for which status icons should be rendered. Default is all ids in spec with 
+#' @param stateObjectName a character string indicating the name of the MMVSola state object (default: "state").
+#' @param ids a character vector of ids for which status icons should be rendered. Default is all ids in spec with
 #' STATUSICON == TRUE.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
@@ -1830,7 +1864,7 @@ GenerateScriptRenderingIcons <- function(
 
 #' Generate an R script creating reactive objects inside the server function for each value in state
 #' @param spec parameter specification table.
-#' @param stateObject a character stirng indicating the name of the MMVSola state object (default: "state").
+#' @param stateObjectName a character string indicating the name of the MMVSola state object (default: "state").
 #' @param ids a character vector of ids for which reactive objects should be created. Default is all ids in spec.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
@@ -1985,11 +2019,15 @@ UpdateRadioButtons <- function(
 }
 
 #' Wrapper of shiny::updateSelectInput that also calls session$setInputs if session is a MockShinySession.
-#' 
+#'
 #' @inheritParams shiny::updateSelectInput
+#' @param multiple logical; whether to allow multiple selection.
+#' @param selectize logical; whether to use the selectize.js plugin.
+#' @param width the width of the input.
+#' @param size number of items to show in the selection box.
 #' @return result of shiny::updateSelectInput.
 #' @details
-#' This function is useful for testing shiny applications with shiny::testSever.
+#' This function is useful for testing shiny applications with shiny::testServer.
 #' @export
 UpdateSelectInput <- function(
   session = getDefaultReactiveDomain(),
@@ -2021,6 +2059,24 @@ UpdateSelectInput <- function(
   )
 }
 
+#' Wrapper of shiny::updateCheckboxInput that also calls session$setInputs if session is a MockShinySession.
+#'
+#' @inheritParams shiny::updateCheckboxInput
+#' @return result of shiny::updateCheckboxInput.
+#' @details
+#' This function is useful for testing shiny applications with shiny::testServer.
+#' @export
+UpdateCheckboxInput <- function(
+    session = getDefaultReactiveDomain(),
+    inputId,
+    label = NULL,
+    value = NULL) {
+  if(inherits(session, "MockShinySession")) {
+    eval(parse(text = paste0("session$setInputs(", inputId, "=", value, ")")))
+  }
+  updateCheckboxInput(session = session, inputId = inputId, label = label, value = value)
+}
+
 #' Get the NA value of the correct type corresponding to id
 #' @param state the state object
 #' @param id the id of the input
@@ -2028,11 +2084,12 @@ UpdateSelectInput <- function(
 #' @return the NA value of the correct type
 #' @export
 NAVal <- function(state, id, spec = state$spec) {
-  NA_values <- list(`text input` = NA_character_, 
-                    `numeric input` = NA_real_, 
-                    `numeric constant` = NA_real_, 
+  NA_values <- list(`text input` = NA_character_,
+                    `numeric input` = NA_real_,
+                    `numeric constant` = NA_real_,
                     `radio input` = NA_character_,
                     `select input` = NA_character_,
+                    `checkbox input` = NA,
                     `action button input` = NULL,
                     `reactive` = NULL)
   type <- GetType(id = id, spec = spec)
@@ -2184,9 +2241,9 @@ CalculateSCInputs <- function(state, ids, flagSetEvent = TRUE, flagSynchronous =
 
 #' Column names of the Science Cloud input file in the preferred order.
 #'
-#' @return a character vector of the row Science Cloud column names in the order they 
+#' @return a character vector of the row Science Cloud column names in the order they
 #' should be displayed in the GUI and the report excel sheet "Science Cloud Input"
-#' 
+#' @importFrom tibble tribble
 #' @export
 SCColumns <- function() {
   d <- data.table::as.data.table(

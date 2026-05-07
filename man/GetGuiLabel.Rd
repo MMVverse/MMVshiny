@@ -7,7 +7,11 @@
 GetGuiLabel(state, ids, spec = state$spec)
 }
 \arguments{
-\item{ids}{a character vector indicating ids for which the GUILABEL should be returned}
+\item{state}{a state object.}
+
+\item{ids}{a character vector indicating ids for which the GUILABEL should be returned.}
+
+\item{spec}{the parameter specification table. Default: \code{state$spec}.}
 }
 \value{
 a character vector

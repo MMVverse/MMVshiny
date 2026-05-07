@@ -34,6 +34,14 @@ the example section for a small demo of this feature.}
 
 \item{selected}{The initially selected value (or multiple values if \code{multiple = TRUE}). If not specified then defaults to the first value for
 single-select lists and no values for multiple select lists.}
+
+\item{multiple}{logical; whether to allow multiple selection.}
+
+\item{selectize}{logical; whether to use the selectize.js plugin.}
+
+\item{width}{the width of the input.}
+
+\item{size}{number of items to show in the selection box.}
 }
 \value{
 result of shiny::updateSelectInput.
@@ -42,5 +50,5 @@ result of shiny::updateSelectInput.
 Wrapper of shiny::updateSelectInput that also calls session$setInputs if session is a MockShinySession.
 }
 \details{
-This function is useful for testing shiny applications with shiny::testSever.
+This function is useful for testing shiny applications with shiny::testServer.
 }

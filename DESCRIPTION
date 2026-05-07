@@ -1,11 +1,10 @@
 Package: MMVshiny
 Type: Package
-Title: Functions handling reactive inputs and parameter specification in Shiny apps.
-Version: 1.1.3
-Authors@R: c(person("Venelin", "Mitov", email = "venelin.mitov@intiquan.com",
-                    comment = '<a href="https://intiquan.com">IntiQuan AG</a>',
+Title: Spec-Driven Reactive Input and State Management for Shiny Applications
+Version: 1.2.0
+Authors@R: c(person("Venelin", "Mitov", email = "vmitov@gmail.com",
                     role = c("aut", "cre", "cph")))
-Maintainer: Venelin Mitov <venelin.mitov@intiquan.com>
+Maintainer: Venelin Mitov <vmitov@gmail.com>
 Description: Contains functions that help to handle reactive inputs and parameter specification in Shiny apps. 
   The package provides a set of functions that allow to define and update reactive inputs in a more structured way, 
   where the behavior of the inputs, such as their type, default value, and validation rules, is defined in an Excel
@@ -17,10 +16,15 @@ RoxygenNote: 7.3.2
 Depends: 
     R (>= 2.10)
 LazyData: true
-Imports: 
+Imports:
     data.table,
+    magrittr,
+    R.utils,
     readxl,
-    shiny
+    shiny,
+    shinyjs,
+    stats,
+    tibble
 Suggests: knitr,
     rmarkdown,
     testthat (>= 3.0.0)
