@@ -42,3 +42,11 @@ argument was provided).
 \description{
 Generate observeEvent calls and store them in an R-file to be sourced from within shiny server or state environment
 }
+\details{
+The \code{"countID"} observer type is what turns a real user edit into a
+\code{ProcessGuiInputEvent()} call: it triggers on \code{input$count<ID>} (a counter incremented
+only by the input's own native browser event - see \code{\link{GenerateJavaScriptEventHandlers}})
+rather than on \code{input$ID} directly, so it never mistakes a server-side
+\code{update*Input()} push for a user action. See \code{\link{GenerateJavaScriptEventHandlers}}
+for the full rationale and its one limitation (selectize-enhanced selects).
+}

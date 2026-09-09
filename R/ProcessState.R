@@ -1451,7 +1451,15 @@ SetDisplayed <- function(state, id, value) {
 
 
 #' Create an input field and, optionally, a status icon according to the type of id in a spec
-#' @param state the state object. Can be missing, in which case, the function assumes that the 
+#'
+#' @details
+#' Select inputs are created with \code{selectize = FALSE} unless the caller explicitly overrides
+#' it via \code{...}. This is not a styling choice - see \code{\link{GenerateJavaScriptEventHandlers}}
+#' for why: the \code{count<ID>} mechanism that tells a real user edit apart from a server-pushed
+#' update relies on a native browser event a selectize-enhanced select also fires for a
+#' programmatic update, defeating the distinction.
+#'
+#' @param state the state object. Can be missing, in which case, the function assumes that the
 #' create UI element is global for all states, so that the id of the element is equal to the argument
 #' \code{id}. If state is provided, the id of the created element will be \code{GetGuiId(state, id)}.
 #' @param id the id of the input parameter for which an input field will be created.
@@ -1551,13 +1559,48 @@ CreateUIInput <- function(state, id, spec = state$spec, useLabel = TRUE, iconVal
 }
 
 #' Generate JS code for event handlers on the client's browser side
+#'
+#' @details
+#' For each input id, this generates a small counter (\code{n<ID>}) bound to that input's own
+#' native browser event - \code{change} for select/checkbox inputs, \code{click} for radio/action
+#' button inputs, \code{blur}/\code{keyup} (Enter) for numeric/text inputs - and reported to the
+#' server as \code{input$count<ID>}, incremented on every such event.
+#'
+#' The reason to trigger server-side logic off this counter instead of off \code{input$ID}
+#' directly: an MMVshiny input is typically updated from two directions - a real user edit, and a
+#' server-side \code{update*Input()} push (a calculated default, a value restored from a file, a
+#' value copied from another compound) - and Shiny's own \code{input$ID} reports both
+#' indistinguishably. A server-side \code{update*Input()} call never dispatches the native event
+#' the counter is bound to, so the counter can only ever be incremented by a genuine user
+#' interaction - by construction, not by a suppression flag that has to be armed before every push
+#' and is only as reliable as the assumption that exactly one echo will follow it (see
+#' \code{\link{GenerateScriptCreatingObservers}}'s \code{"countID"} observer type for the
+#' corresponding server-side half, which triggers on this counter and then reads \code{input$ID}
+#' directly, trusting it already reflects the same edit).
+#'
+#' \strong{Limitation:} this does not work on a selectize-enhanced \code{<select>}. A selectize
+#' widget's client-side value-sync path re-dispatches the underlying select's native \code{change}
+#' event when its value is set programmatically, so a server-pushed \code{updateSelectInput()}
+#' fires the same event a real pick does and the counter can no longer tell them apart (verified
+#' empirically). This is why \code{\link{CreateUIInput}} defaults \code{selectize} to \code{FALSE}
+#' for every select input it generates - a consumer wiring a select-type input into this same
+#' pattern outside \code{CreateUIInput()} needs to disable selectize on it too, or the distinction
+#' silently stops working (see MedicinesForMalariaVenture/MMVFree#63 and #66 for a live example of
+#' exactly this bug and its fix).
+#'
+#' Also note the bindings generated here attach directly to each input element and only work for
+#' elements present in the DOM at page load - they do not survive an input being destroyed and
+#' recreated (e.g. one embedded in a \code{DT::renderDT()} table that gets redrawn on
+#' \code{DT::replaceData()}). See \url{https://github.com/MMVverse/MMVshiny/issues/3} for the open
+#' proposal to support event-delegation-based binding for that case.
+#'
 #' @param spec parameter specification.
 #' @param ids a character vector of ids for which event handlers should be generated. Default
 #' is all input parameters in spec, i.e. \code{spec[grepl("input", TYPE), ID]}.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
-#' 
-#' @return a character string - the filepath to the generated R-script (same as filename if this 
+#'
+#' @return a character string - the filepath to the generated R-script (same as filename if this
 #' argument was provided).
 #' @export
 GenerateJavaScriptEventHandlers <- function(spec, ids = spec[grepl("input", TYPE), ID], filename) {
@@ -1661,21 +1704,29 @@ for(id in ids) {
 }
 
 #' Generate observeEvent calls and store them in an R-file to be sourced from within shiny server or state environment
-#' 
+#'
+#' @details
+#' The \code{"countID"} observer type is what turns a real user edit into a
+#' \code{ProcessGuiInputEvent()} call: it triggers on \code{input$count<ID>} (a counter incremented
+#' only by the input's own native browser event - see \code{\link{GenerateJavaScriptEventHandlers}})
+#' rather than on \code{input$ID} directly, so it never mistakes a server-side
+#' \code{update*Input()} push for a user action. See \code{\link{GenerateJavaScriptEventHandlers}}
+#' for the full rationale and its one limitation (selectize-enhanced selects).
+#'
 #' @param spec parameter specification.
 #' @param inputObjectName a character string indicating the name of the shiny input object (default "input").
 #' @param outputObjectName a character string indicating the name of the shiny output object (default "output").
 #' @param stateObjectName a character string indicating the name of the MMVSola state object (default: "state").
 #' @param ids a character vector of ids for which observers should be generated.
-#' @param observerTypes a character vector of observer types to be generated. Possible values 
+#' @param observerTypes a character vector of observer types to be generated. Possible values
 #' are "countID", "default", "displayed", "SCInput", "reportInput", "resetCount", "min", "max". Bye default, this
-#' is a vector of all of these. Some observer types may not be relevant for some input types, for example, 
+#' is a vector of all of these. Some observer types may not be relevant for some input types, for example,
 #' "min" and "max" are only relevant for numeric inputs, and countID and displayed are only relevant for inputs
 #' with a GUI label.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
-#' 
-#' @return a character string - the filepath to the generated R-script (same as filename if this 
+#'
+#' @return a character string - the filepath to the generated R-script (same as filename if this
 #' argument was provided).
 #' @export
 GenerateScriptCreatingObservers <- function(
