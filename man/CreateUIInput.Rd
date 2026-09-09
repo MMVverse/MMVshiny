@@ -36,3 +36,10 @@ a list of td elements: one for the input and, another one for the status icon. I
 \description{
 Create an input field and, optionally, a status icon according to the type of id in a spec
 }
+\details{
+Select inputs are created with \code{selectize = FALSE} unless the caller explicitly overrides
+it via \code{...}. This is not a styling choice - see \code{\link{GenerateJavaScriptEventHandlers}}
+for why: the \code{count<ID>} mechanism that tells a real user edit apart from a server-pushed
+update relies on a native browser event a selectize-enhanced select also fires for a
+programmatic update, defeating the distinction.
+}

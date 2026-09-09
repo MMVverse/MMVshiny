@@ -1,7 +1,7 @@
 Package: MMVshiny
 Type: Package
 Title: Spec-Driven Reactive Input and State Management for Shiny Applications
-Version: 1.2.0
+Version: 1.2.1
 Authors@R: c(person("Venelin", "Mitov", email = "vmitov@gmail.com",
                     role = c("aut", "cre", "cph")))
 Maintainer: Venelin Mitov <vmitov@gmail.com>
@@ -12,7 +12,6 @@ Description: Contains functions that help to handle reactive inputs and paramete
 Encoding: UTF-8
 License: file LICENSE
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 Depends: 
     R (>= 2.10)
 LazyData: true
@@ -30,3 +29,4 @@ Suggests: knitr,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
+Config/roxygen2/version: 8.0.0

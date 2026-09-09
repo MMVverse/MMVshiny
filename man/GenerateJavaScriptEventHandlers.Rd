@@ -26,3 +26,37 @@ argument was provided).
 \description{
 Generate JS code for event handlers on the client's browser side
 }
+\details{
+For each input id, this generates a small counter (\code{n<ID>}) bound to that input's own
+native browser event - \code{change} for select/checkbox inputs, \code{click} for radio/action
+button inputs, \code{blur}/\code{keyup} (Enter) for numeric/text inputs - and reported to the
+server as \code{input$count<ID>}, incremented on every such event.
+
+The reason to trigger server-side logic off this counter instead of off \code{input$ID}
+directly: an MMVshiny input is typically updated from two directions - a real user edit, and a
+server-side \code{update*Input()} push (a calculated default, a value restored from a file, a
+value copied from another compound) - and Shiny's own \code{input$ID} reports both
+indistinguishably. A server-side \code{update*Input()} call never dispatches the native event
+the counter is bound to, so the counter can only ever be incremented by a genuine user
+interaction - by construction, not by a suppression flag that has to be armed before every push
+and is only as reliable as the assumption that exactly one echo will follow it (see
+\code{\link{GenerateScriptCreatingObservers}}'s \code{"countID"} observer type for the
+corresponding server-side half, which triggers on this counter and then reads \code{input$ID}
+directly, trusting it already reflects the same edit).
+
+\strong{Limitation:} this does not work on a selectize-enhanced \code{<select>}. A selectize
+widget's client-side value-sync path re-dispatches the underlying select's native \code{change}
+event when its value is set programmatically, so a server-pushed \code{updateSelectInput()}
+fires the same event a real pick does and the counter can no longer tell them apart (verified
+empirically). This is why \code{\link{CreateUIInput}} defaults \code{selectize} to \code{FALSE}
+for every select input it generates - a consumer wiring a select-type input into this same
+pattern outside \code{CreateUIInput()} needs to disable selectize on it too, or the distinction
+silently stops working (see MedicinesForMalariaVenture/MMVFree#63 and #66 for a live example of
+exactly this bug and its fix).
+
+Also note the bindings generated here attach directly to each input element and only work for
+elements present in the DOM at page load - they do not survive an input being destroyed and
+recreated (e.g. one embedded in a \code{DT::renderDT()} table that gets redrawn on
+\code{DT::replaceData()}). See \url{https://github.com/MMVverse/MMVshiny/issues/3} for the open
+proposal to support event-delegation-based binding for that case.
+}

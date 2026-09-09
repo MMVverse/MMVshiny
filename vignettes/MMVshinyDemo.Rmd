@@ -236,6 +236,45 @@ scriptRenderStatusIcons.R <- MMVshiny::GenerateScriptRenderingIcons(
 MMVshiny relies on a small piece of JavaScript to detect when a user has “committed” a change
 (press Enter or click outside a text field). The handler increments `input$count<ID>`.
 
+**Why a counter, and not `input$ID` directly?** A GUI input in an MMVshiny app is typically
+updated from *two* directions: the user edits it, and the app itself pushes values into it (a
+calculated default, a value restored from a loaded file, a value copied from another compound).
+Shiny's own `input$ID` reports both indiscriminately - a server-side `update*Input()` call and a
+real user edit both surface as the same `input$ID` change, with no way to tell which one just
+happened. Reacting to `input$ID` directly for something like "the user just edited this, run
+validation / mark it as user-supplied" would therefore also mis-fire every time the app *itself*
+sets the value, which is rarely the intended behavior and can easily create a feedback loop if the
+same code path that pushes a value also reacts to seeing it echoed back.
+
+The `count<ID>` counter sidesteps this at the source rather than trying to distinguish the two
+cases after the fact: it is incremented only by the input's own native browser event (`change`,
+`click`, or `blur`/`keyup`, depending on input type - see `GenerateJavaScriptEventHandlers()`), and
+a server-side `update*Input()` call never dispatches that event. The counter therefore *cannot* be
+incremented by the app's own updates, by construction - there is nothing to arm, suppress, or get
+out of sync, unlike a flag-based approach (record "I just pushed a value, ignore the next echo")
+which has to be armed before every push and is only as reliable as the assumption that exactly one
+echo will follow it. `GenerateScriptCreatingObservers()`'s `"countID"` observer type is the
+generated server-side half of this: it triggers on `input$count<ID>` and reads `input$ID` inside,
+trusting it already reflects the same edit (both are dispatched from the same native event).
+
+**Limitation: this does not work on a selectize-enhanced `<select>`.** Shiny's `selectInput()`
+enables selectize.js by default, and a selectize widget's own client-side value-sync path
+re-dispatches the underlying `<select>`'s native `change` event when its value is set
+programmatically - so a server-pushed `updateSelectInput()` fires the *same* event a real pick
+does, and the counter trick can no longer tell them apart (verified empirically: both increment
+the counter). This is exactly why `CreateUIInput()` defaults `selectize` to `FALSE` for every
+select input it generates. A consumer building their own select-type input outside
+`CreateUIInput()` and wiring it into this same pattern (e.g. a hand-rolled dropdown, not part of
+the compound-state spec) needs to disable selectize on it too, or the distinction silently stops
+working - see MedicinesForMalariaVenture/MMVFree#63/#66 for a live example of exactly this bug and
+its fix.
+
+Note also that the bindings `GenerateJavaScriptEventHandlers()` generates attach directly to each
+input element and only work for elements present in the DOM at page load - they do not survive an
+input being destroyed and recreated (e.g. one embedded in a `DT::renderDT()` table that gets
+redrawn). See [issue #3](https://github.com/MMVverse/MMVshiny/issues/3) for the open proposal to
+support event-delegation-based binding for that case.
+
 ```{r gen-js, eval=FALSE}
 scriptHandleEvents.js <- MMVshiny::GenerateJavaScriptEventHandlers(
   stateSpec,
