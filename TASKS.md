@@ -2,34 +2,24 @@
 
 ## Plan of Action – Open Tasks Prioritization
 
-1. [Issue #10](https://github.com/MMVverse/MMVshiny/issues/10) — `DefaultFus` reactive retriggered many times per compound instead of once
-2. [Issue #8](https://github.com/MMVverse/MMVshiny/issues/8) — `GetType()` re-derived dozens of times per compound instead of cached
-3. [Issue #2](https://github.com/MMVverse/MMVshiny/issues/2) — Add `"checkbox input"` TYPE
+1. [Issue #8](https://github.com/MMVverse/MMVshiny/issues/8) — `GetType()` re-derived dozens of times per compound instead of cached
+2. [Issue #2](https://github.com/MMVverse/MMVshiny/issues/2) — Add `"checkbox input"` TYPE
 
 ---
 
-## Compound-state initialization retriggers the DefaultFus reactive many times instead of once
+## Compound-state initialization retriggers the DefaultFus reactive many times instead of once [MOVED]
 
-[Issue #10](https://github.com/MMVverse/MMVshiny/issues/10) | assignee: venelin | 2026-09-09
+[Issue #10](https://github.com/MMVverse/MMVshiny/issues/10) (closed, misfiled) → moved to
+[MedicinesForMalariaVenture/MMVSola#195](https://github.com/MedicinesForMalariaVenture/MMVSola/issues/195)
 
-Follow-up to [Issue #8](https://github.com/MMVverse/MMVshiny/issues/8), found while continuing to
-investigate [MedicinesForMalariaVenture/MMVFree#69](https://github.com/MedicinesForMalariaVenture/MMVFree/issues/69)
-and [MedicinesForMalariaVenture/MMVSola#194](https://github.com/MedicinesForMalariaVenture/MMVSola/issues/194).
-Traced `predict_DefaultFus()` (backs the `"DefaultFus"` reactive that ~15 other default-value
-formulas read via `Get(DefaultFus)`) live: it's called up to **16 times per compound state**
-(measured: 16/6/6/11/10 across 5 states) when it should only need to run once — ~90% of the calls
-are discarded work, only the last one (with the correct `MaxPropIter` setting) is used.
-
-Not a missing-cache bug — `"DefaultFus"` genuinely is a `reactive()` and Shiny's memoization works
-correctly. The redundancy comes from invalidation granularity: `InitState()` sets each of
-`predict_DefaultFus()`'s ~15 dependency parameters one at a time while building a new compound
-state, so the reactive invalidates and recomputes after every individual one settles instead of
-once after the state is fully built. Compounds with #8's `GetType()` blowup, since each
-`predict_DefaultFus()` call makes many `Get()`/`GetSource()` calls internally.
-
-Suggested fix: build a new compound state's foundational values inside `isolate()` before wiring
-up its live reactive graph, or debounce/throttle the `"DefaultFus"` reactive so a burst of
-invalidations during construction collapses into one recomputation. Not yet fixed.
+Found while investigating [MedicinesForMalariaVenture/MMVFree#69](https://github.com/MedicinesForMalariaVenture/MMVFree/issues/69)
+as a follow-up to [Issue #8](https://github.com/MMVverse/MMVshiny/issues/8): `predict_DefaultFus()`
+(MMVSola's own function) gets called up to 16x per compound state instead of once. On closer
+inspection, the cascade is caused by how MMVSola's own spec wires ~20 parameters' `VALEXPR` to a
+shared reactive, all listed in the same `observerTypes="default"` `ids` list — `GenerateScript-
+CreatingObservers()`'s generic per-parameter pattern behaves correctly here; it's an app-level
+spec design consequence, not a package defect. Re-filed with the corrected root cause at
+MMVSola#195 above.
 
 ## `GetType()` re-derives the same parameter type dozens of times per compound instead of caching it
 
