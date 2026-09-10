@@ -2,8 +2,7 @@
 
 ## Plan of Action – Open Tasks Prioritization
 
-1. [Issue #8](https://github.com/MMVverse/MMVshiny/issues/8) — `GetType()` re-derived dozens of times per compound instead of cached
-2. [Issue #2](https://github.com/MMVverse/MMVshiny/issues/2) — Add `"checkbox input"` TYPE
+1. [Issue #2](https://github.com/MMVverse/MMVshiny/issues/2) — Add `"checkbox input"` TYPE
 
 ---
 
@@ -21,9 +20,9 @@ CreatingObservers()`'s generic per-parameter pattern behaves correctly here; it'
 spec design consequence, not a package defect. Re-filed with the corrected root cause at
 MMVSola#195 above.
 
-## `GetType()` re-derives the same parameter type dozens of times per compound instead of caching it
+## `GetType()` re-derives the same parameter type dozens of times per compound instead of caching it [RESOLVED]
 
-[Issue #8](https://github.com/MMVverse/MMVshiny/issues/8) | assignee: venelin | 2026-09-09
+[Issue #8](https://github.com/MMVverse/MMVshiny/issues/8) | assignee: venelin | 2026-09-09 | resolved 2026-09-10 in v1.2.2
 
 Found while profiling slow post-upload responsiveness in
 [MedicinesForMalariaVenture/MMVFree#69](https://github.com/MedicinesForMalariaVenture/MMVFree/issues/69) and
@@ -37,10 +36,18 @@ both against the same 4-compound test upload — no single call is slow (~0.9ms 
 call-count. Not caused by reactive/observer re-firing (confirmed `InitState`/`SetSCRawData` etc.
 each fire exactly once per compound, as expected).
 
-Suggested fix: compute `type <- GetType(id, spec)` once per parameter in `InitState()` and thread
-it down to `NAVal()`/`Validate*()` instead of re-deriving; also consider having `GetType()` itself
-use the key `InitState()` already sets (`setkey(spec, ID)`) via `spec[.(id), TYPE]` instead of
-`spec[ID == id, TYPE]`, which would help every caller for free. Not yet fixed.
+Fixed in v1.2.2: `GetType()` now does an indexed lookup (`spec[.(id), TYPE, on = "ID"]`)
+instead of a full scan; `InitState()` computes `type` once per parameter and threads it into
+`NAVal()` (now takes an optional `type =` to skip its internal `GetType()` call); `GetGuiLabel()`/
+`GetReportLabel()` batch-join all `ids` in one call instead of scanning once per id (also fixes a
+second, previously unflagged O(n²) hotspot in `SetSCRawData()`'s per-row `GetGuiLabel()` call, which
+turned out to cost more than the original `GetType()`/`NAVal()` redundancy); `CalculateSCInputs()`
+batch-looks-up `SCFILTER`/`SCVALUE`/`TYPE` once instead of scanning per id in its loop; `GetSource()`
+also indexed. Measured against real uploads through the running apps (chromote-driven, real Shiny
+reactive session, not a synthetic microbenchmark): MMVFree total upload time 4.74s → 3.05s (1.55x),
+MMVSola 16.1s → 11.8s (1.37x). Remaining hotspots not covered by this fix: `CreateUIInput()`'s
+6-call `GetType()` if/else-if chain, and `LoadStateSpecification()`'s pre-`setkey()` per-id loop —
+left for a follow-up issue if warranted.
 
 ## Add `"checkbox input"` TYPE for reactive checkboxInput() support
 
