@@ -9,6 +9,9 @@
 NULL
 
 utils::globalVariables(c(
+  # data.table's `.` alias (== list()), used in on="ID" batch joins; R CMD check's
+  # static analysis doesn't recognize it as coming from data.table via @importFrom.
+  ".",
   # data.table column names used in NSE
   "ID", "TYPE", "GUILABEL", "STATUSICON", "SOURCE", "UNIT", "DECDIGITS",
   "RADIOVALUES", "OUTOFBOUNDS", "MIN", "MINNOTE", "MAX", "MAXNOTE",

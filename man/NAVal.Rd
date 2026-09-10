@@ -4,7 +4,7 @@
 \alias{NAVal}
 \title{Get the NA value of the correct type corresponding to id}
 \usage{
-NAVal(state, id, spec = state$spec)
+NAVal(state, id, spec = state$spec, type = GetType(id = id, spec = spec))
 }
 \arguments{
 \item{state}{the state object}
@@ -12,6 +12,10 @@ NAVal(state, id, spec = state$spec)
 \item{id}{the id of the input}
 
 \item{spec}{the spec object. Default is state$spec.}
+
+\item{type}{character string, the TYPE of id in spec. Default is \code{GetType(id = id, spec = spec)}.
+This argument only needs to be specified when the caller has already looked up the type, to avoid
+re-deriving it from spec.}
 }
 \value{
 the NA value of the correct type

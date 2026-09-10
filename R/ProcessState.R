@@ -250,46 +250,47 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
   # Create state objects
   tStart3 <- R.utils::System$currentTimeMillis()
   for(id in spec$ID) {
-    if(GetType(id = id, spec = spec) %in% c("numeric input", "text input", "radio input", "select input", "checkbox input")) {
+    type <- GetType(id = id, spec = spec)
+    if(type %in% c("numeric input", "text input", "radio input", "select input", "checkbox input")) {
       state$event[[id]] <- "INIT"
-      
+
       state$default[[id]] <- eval(parse(text = spec[ID == id, ExprVAL]))
       state$defaultNote[[id]] <- eval(parse(text = spec[ID == id, ExprDEFNOTE]))
       state$min[[id]] <- eval(parse(text = spec[ID == id, ExprMIN]))
       state$minNote[[id]] <- eval(parse(text = spec[ID == id, ExprMINNOTE]))
       state$max[[id]] <- eval(parse(text = spec[ID == id, ExprMAX]))
       state$maxNote[[id]] <- eval(parse(text = spec[ID == id, ExprMAXNOTE]))
-      
-      state$validated[[id]] <- NAVal(id = id, spec = spec)
-      state$displayed[[id]] <- NAVal(id = id, spec = spec)
-      
+
+      state$validated[[id]] <- NAVal(id = id, spec = spec, type = type)
+      state$displayed[[id]] <- NAVal(id = id, spec = spec, type = type)
+
       state$resetCount[[id]] <- 0
-      
-      state$guiInput[[id]] <- NAVal(id = id, spec = spec)
-      state$reportInput[[id]] <- NAVal(id = id, spec = spec)
-      state$scInput[[id]] <- NAVal(id = id, spec = spec)
-      
-      
+
+      state$guiInput[[id]] <- NAVal(id = id, spec = spec, type = type)
+      state$reportInput[[id]] <- NAVal(id = id, spec = spec, type = type)
+      state$scInput[[id]] <- NAVal(id = id, spec = spec, type = type)
+
+
       state$status[[id]] <- list(
         source = "Default value",
-        valid = "OK", 
+        valid = "OK",
         note = GetValidationNote(id = id, spec = spec)
       )
-      
+
       state$statusIconClass[[id]] <- "glyphicon glyphicon-info-sign"
       state$statusIconColor[[id]] <- "#337ab7"
       state$statusTitle[[id]] <- "Info"
       state$statusText[[id]] <- GetValidationNote(id = id, spec = spec)
-    } else if(GetType(id = id, spec = spec) %in% c("numeric constant")) {
+    } else if(type %in% c("numeric constant")) {
       defVal <- try(as.numeric(eval(parse(text=as.character(spec[ID == id, VALEXPR])))), silent = TRUE)
       if(is.null(defVal) || !is.numeric(defVal) || is.na(defVal)) {
         stop("InitState: VALEXPR could not be evaluated as a numeric for numeric constant ",id)
       } else {
         state$validated[[id]] <- defVal
       }
-    } else if(GetType(id = id, spec = spec) == "action button input") {
+    } else if(type == "action button input") {
       state$actionHandler[[id]] <- eval(parse(text = spec[ID == id, ExprACTION]))
-    } else if(GetType(id = id, spec = spec) == "reactive") {
+    } else if(type == "reactive") {
       state$default[[id]] <- eval(parse(text = spec[ID == id, ExprVAL]))
     }
   }
@@ -682,7 +683,7 @@ GetSource <- function(state, id) {
     status <- GetStatus(state, id)
     status$source
   } else {
-    state$spec[ID == id, SOURCE]
+    state$spec[.(id), SOURCE, on = "ID"]
   }
 }
 
@@ -698,7 +699,7 @@ GetSource <- function(state, id) {
 #' @return the TYPE column value for id in the parameter spec
 #' @export
 GetType <- function(state, id, spec=state$spec) {
-  spec[ID == id, TYPE]
+  spec[.(id), TYPE, on = "ID"]
 }
 
 #' Get the unit of a parameter in a state object
@@ -1350,7 +1351,7 @@ IncrementResetCount <- function(state, id) {
 #'
 #' @export
 GetGuiLabel <- function(state, ids, spec = state$spec) {
-  sapply(ids, function(id) spec[ID == id, GUILABEL])
+  spec[.(ids), GUILABEL, on = "ID"]
 }
 
 #' Get the REPORTLABEL for one or several ID's in the spec
@@ -1360,7 +1361,7 @@ GetGuiLabel <- function(state, ids, spec = state$spec) {
 #' @return a character vector
 #' @export
 GetReportLabel <- function(state, ids, spec = state$spec) {
-  sapply(ids, function(id) spec[ID == id, REPORTLABEL])
+  spec[.(ids), REPORTLABEL, on = "ID"]
 }
 
 #' Get the possible choices for a radio input from the state specification
@@ -2132,9 +2133,12 @@ UpdateCheckboxInput <- function(
 #' @param state the state object
 #' @param id the id of the input
 #' @param spec the spec object. Default is state$spec.
+#' @param type character string, the TYPE of id in spec. Default is `GetType(id = id, spec = spec)`.
+#' This argument only needs to be specified when the caller has already looked up the type, to avoid
+#' re-deriving it from spec.
 #' @return the NA value of the correct type
 #' @export
-NAVal <- function(state, id, spec = state$spec) {
+NAVal <- function(state, id, spec = state$spec, type = GetType(id = id, spec = spec)) {
   NA_values <- list(`text input` = NA_character_,
                     `numeric input` = NA_real_,
                     `numeric constant` = NA_real_,
@@ -2143,7 +2147,6 @@ NAVal <- function(state, id, spec = state$spec) {
                     `checkbox input` = NA,
                     `action button input` = NULL,
                     `reactive` = NULL)
-  type <- GetType(id = id, spec = spec)
   if(!type %in% names(NA_values)) {
     stop("NAVal: Unknown NA value for type: ", type)
   }
@@ -2255,20 +2258,25 @@ ReadSCInput <- function(dataSC, filter, exprValue, NAvalue = NA_real_, exprFilte
 CalculateSCInputs <- function(state, ids, flagSetEvent = TRUE, flagSynchronous = getOption("MMVshiny.synchSetSCInput", FALSE)) {
   scRawData <- GetSCRawData(state)
   if(isSCRawData(scRawData)) {
-    for(id in ids) {
-      scExprFilter <- state$spec[ID == id, SCFILTER]
-      scExprValue <- state$spec[ID == id, SCVALUE]
-      
+    # Look up SCFILTER/SCVALUE/TYPE for all ids in one indexed batch join instead of
+    # re-scanning state$spec for each id inside the loop below.
+    scLookup <- state$spec[.(ids), .(SCFILTER, SCVALUE, TYPE), on = "ID"]
+    for(i in seq_along(ids)) {
+      id <- ids[[i]]
+      scExprFilter <- scLookup$SCFILTER[[i]]
+      scExprValue <- scLookup$SCVALUE[[i]]
+      idType <- scLookup$TYPE[[i]]
+
       if(!is.na(scExprFilter) && scExprFilter != "") {
         cat2("Calculating SCInput value for ", id, ", based on SC raw data")
-        
-        newSCAvgValue <- ReadSCInput(dataSC = scRawData, 
-                                     exprFilter = paste0("INCLUDE == TRUE & (", scExprFilter, ")"), 
-                                     exprValue = scExprValue, 
-                                     NAvalue = NAVal(id = id, spec = state$spec))
-        
+
+        newSCAvgValue <- ReadSCInput(dataSC = scRawData,
+                                     exprFilter = paste0("INCLUDE == TRUE & (", scExprFilter, ")"),
+                                     exprValue = scExprValue,
+                                     NAvalue = NAVal(id = id, spec = state$spec, type = idType))
+
         currentSCAvgValue <- GetSCInput(state, id)
-        
+
         currentSource <- GetSource(state, id)
         
         cat2("; current value =", currentSCAvgValue)
