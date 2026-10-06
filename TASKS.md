@@ -6,6 +6,27 @@
 
 ---
 
+## Remaining `spec[ID == id, ...]` unindexed boolean-filter scans [RESOLVED]
+
+[Issue #12](https://github.com/MMVverse/MMVshiny/issues/12) | assignee: venelin | 2026-10-06 | resolved 2026-10-06 in v1.2.3
+
+Follow-up to #8, which indexed `GetType()`/`GetSource()` and batched `GetGuiLabel()`/
+`GetReportLabel()`/`CalculateSCInputs()`, but left several sibling accessors doing the same
+unindexed `spec[ID == id, COL]` scan: `GetUnit()`, `GetOutOfBounds()`, `GetDecDigits()`,
+`GetRadioChoices()`, `CreateUIInput()`'s `GUILABEL`/`STATUSICON` lookups, the `GetMin`/`GetMax`/
+`GetMinNote`/`GetMaxNote` no-`state` fallback branch, and the handful of `spec[ID == id, ExprXXX]`
+reads inside `InitState()`'s per-parameter loop (the same loop #8 already touched, just adjacent
+lines it didn't cover).
+
+Fixed in v1.2.3: all of the above now use the indexed `spec[.(id), COL, on = "ID"]` lookup
+(`InitState()`'s six `ExprVAL`/`ExprDEFNOTE`/`ExprMIN`/`ExprMINNOTE`/`ExprMAX`/`ExprMAXNOTE` reads
+batched into one join per id). Measured against a real upload through the running MMVSola app
+(chromote-driven, real Shiny reactive session, MMVSola's 166-parameter spec, same methodology as
+#8): 31.46s → 27.87s busy-to-idle (mean of 3 reps each), an ~11% reduction — smaller than #8's own
+1.37x because the larger remaining cost (the still-redundant multi-call `GetType()` chains in
+`ValidateValue()`, `SetDisplayed()`, `ValidateBoundaries()`, `CreateUIInput()`) was intentionally
+left out of scope here; flagged as a follow-up if warranted.
+
 ## Compound-state initialization retriggers the DefaultFus reactive many times instead of once [MOVED]
 
 [Issue #10](https://github.com/MMVverse/MMVshiny/issues/10) (closed, misfiled) → moved to

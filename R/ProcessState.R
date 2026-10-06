@@ -254,12 +254,13 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
     if(type %in% c("numeric input", "text input", "radio input", "select input", "checkbox input")) {
       state$event[[id]] <- "INIT"
 
-      state$default[[id]] <- eval(parse(text = spec[ID == id, ExprVAL]))
-      state$defaultNote[[id]] <- eval(parse(text = spec[ID == id, ExprDEFNOTE]))
-      state$min[[id]] <- eval(parse(text = spec[ID == id, ExprMIN]))
-      state$minNote[[id]] <- eval(parse(text = spec[ID == id, ExprMINNOTE]))
-      state$max[[id]] <- eval(parse(text = spec[ID == id, ExprMAX]))
-      state$maxNote[[id]] <- eval(parse(text = spec[ID == id, ExprMAXNOTE]))
+      exprs <- spec[.(id), .(ExprVAL, ExprDEFNOTE, ExprMIN, ExprMINNOTE, ExprMAX, ExprMAXNOTE), on = "ID"]
+      state$default[[id]] <- eval(parse(text = exprs$ExprVAL))
+      state$defaultNote[[id]] <- eval(parse(text = exprs$ExprDEFNOTE))
+      state$min[[id]] <- eval(parse(text = exprs$ExprMIN))
+      state$minNote[[id]] <- eval(parse(text = exprs$ExprMINNOTE))
+      state$max[[id]] <- eval(parse(text = exprs$ExprMAX))
+      state$maxNote[[id]] <- eval(parse(text = exprs$ExprMAXNOTE))
 
       state$validated[[id]] <- NAVal(id = id, spec = spec, type = type)
       state$displayed[[id]] <- NAVal(id = id, spec = spec, type = type)
@@ -282,16 +283,16 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
       state$statusTitle[[id]] <- "Info"
       state$statusText[[id]] <- GetValidationNote(id = id, spec = spec)
     } else if(type %in% c("numeric constant")) {
-      defVal <- try(as.numeric(eval(parse(text=as.character(spec[ID == id, VALEXPR])))), silent = TRUE)
+      defVal <- try(as.numeric(eval(parse(text=as.character(spec[.(id), VALEXPR, on = "ID"])))), silent = TRUE)
       if(is.null(defVal) || !is.numeric(defVal) || is.na(defVal)) {
         stop("InitState: VALEXPR could not be evaluated as a numeric for numeric constant ",id)
       } else {
         state$validated[[id]] <- defVal
       }
     } else if(type == "action button input") {
-      state$actionHandler[[id]] <- eval(parse(text = spec[ID == id, ExprACTION]))
+      state$actionHandler[[id]] <- eval(parse(text = spec[.(id), ExprACTION, on = "ID"]))
     } else if(type == "reactive") {
-      state$default[[id]] <- eval(parse(text = spec[ID == id, ExprVAL]))
+      state$default[[id]] <- eval(parse(text = spec[.(id), ExprVAL, on = "ID"]))
     }
   }
   tEnd3 <- R.utils::System$currentTimeMillis()
@@ -712,7 +713,7 @@ GetType <- function(state, id, spec=state$spec) {
 #' @return the UNIT column value for id in the parameter spec
 #' @export
 GetUnit <- function(state, id, spec = state$spec) {
-  spec[ID == id, UNIT]
+  spec[.(id), UNIT, on = "ID"]
 }
 
 #' Get the out-of-bound policy for a numeric input id in a state object
@@ -723,7 +724,7 @@ GetUnit <- function(state, id, spec = state$spec) {
 #' @export
 GetOutOfBounds <- function(state, id) {
   if(GetType(state, id) %in% c("numeric input")) {
-    res <- tolower(state$spec[ID == id, OUTOFBOUNDS])
+    res <- tolower(state$spec[.(id), OUTOFBOUNDS, on = "ID"])
     if(!res %in% c("na", "nearest", "default or nearest", "keep with error")) {
       stop("In parameter spec OUTOFBOUNDS for numeric input ",id," should be either 'na', 'nearest', 'default or nearest', or 'keep with error'.")
     } 
@@ -748,7 +749,7 @@ GetMin <- function(state, id, spec = state$spec) {
         as.numeric(state$min[[id]])
       }
     } else {
-      res <- try(as.numeric(spec[ID == id, MIN]), silent = TRUE)
+      res <- try(as.numeric(spec[.(id), MIN, on = "ID"]), silent = TRUE)
       if(is.numeric(res)) {
         res
       } else {
@@ -775,7 +776,7 @@ GetMinNote <- function(state, id, spec = state$spec) {
         as.character(state$minNote[[id]])
       }
     } else {
-      res <- try(as.character(spec[ID == id, MIN]), silent = TRUE)
+      res <- try(as.character(spec[.(id), MIN, on = "ID"]), silent = TRUE)
       if(is.character(res)) {
         res
       } else {
@@ -803,7 +804,7 @@ GetMax <- function(state, id, spec = state$spec) {
         as.numeric(state$max[[id]])
       }
     } else {
-      res <- try(as.numeric(spec[ID == id, MAX]), silent = TRUE)
+      res <- try(as.numeric(spec[.(id), MAX, on = "ID"]), silent = TRUE)
       if(is.numeric(res)) {
         res
       } else {
@@ -830,7 +831,7 @@ GetMaxNote <- function(state, id, spec = state$spec) {
         as.character(state$maxNote[[id]])
       }
     } else {
-      res <- try(as.character(spec[ID == id, MAXNOTE]), silent = TRUE)
+      res <- try(as.character(spec[.(id), MAXNOTE, on = "ID"]), silent = TRUE)
       if(is.character(res)) {
         res
       } else {
@@ -850,7 +851,7 @@ GetMaxNote <- function(state, id, spec = state$spec) {
 #' @export
 GetDecDigits <- function(state, id, spec = state$spec) {
   if(GetType(id = id, spec = spec) == "numeric input") {
-    as.integer(spec[ID == id, DECDIGITS])
+    as.integer(spec[.(id), DECDIGITS, on = "ID"])
   } else {
     NA_integer_
   }
@@ -1374,7 +1375,7 @@ GetReportLabel <- function(state, ids, spec = state$spec) {
 #' @export
 GetRadioChoices <- function(state, id, spec = state$spec) {
   if(GetType(id = id, spec = spec) %in% c("radio input", "select input")) {
-    as.character(strsplit(spec[ID == id, RADIOVALUES], split = ":", fixed = TRUE)[[1]])
+    as.character(strsplit(spec[.(id), RADIOVALUES, on = "ID"], split = ":", fixed = TRUE)[[1]])
   } else {
     stop("GetRadioChoices called for a non-radio/select input ", id)
   }
@@ -1491,7 +1492,7 @@ CreateUIInput <- function(state, id, spec = state$spec, useLabel = TRUE, iconVal
   }
   
   if(useLabel) {
-    label <- spec[ID == id, GUILABEL]
+    label <- spec[.(id), GUILABEL, on = "ID"]
   } else {
     label <- NULL
   }
@@ -1552,7 +1553,7 @@ CreateUIInput <- function(state, id, spec = state$spec, useLabel = TRUE, iconVal
     do.call(actionButton, listArgs)
   }
   
-  if(spec[ID == id, STATUSICON]) {
+  if(spec[.(id), STATUSICON, on = "ID"]) {
     list(tags$td(class = "mmv-input-cell", el), tags$td(class = "mmv-icon-cell", valign = iconValign, uiOutput(paste0(guiId,"icon"))))
   } else {
     list(tags$td(class = "mmv-input-cell", el))
