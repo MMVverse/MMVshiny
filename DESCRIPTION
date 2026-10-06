@@ -1,7 +1,7 @@
 Package: MMVshiny
 Type: Package
 Title: Spec-Driven Reactive Input and State Management for Shiny Applications
-Version: 1.2.2
+Version: 1.2.3
 Authors@R: c(person("Venelin", "Mitov", email = "vmitov@gmail.com",
                     role = c("aut", "cre", "cph")))
 Maintainer: Venelin Mitov <vmitov@gmail.com>
