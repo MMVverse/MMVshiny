@@ -12,6 +12,7 @@ GenerateScriptCreatingObservers(
   ids = unique(spec$ID),
   observerTypes = c("countID", "default", "displayed", "SCInput", "reportInput",
     "resetCount", "min", "max"),
+  useSafeShiny = FALSE,
   filename
 )
 }
@@ -31,6 +32,20 @@ are "countID", "default", "displayed", "SCInput", "reportInput", "resetCount", "
 is a vector of all of these. Some observer types may not be relevant for some input types, for example,
 "min" and "max" are only relevant for numeric inputs, and countID and displayed are only relevant for inputs
 with a GUI label.}
+
+\item{useSafeShiny}{logical, default \code{FALSE}. When \code{FALSE}, generated observers are
+unchanged from before this argument existed: plain \code{observeEvent(...)} calls, where an
+uncaught error inside one terminates the whole Shiny session (see
+\href{https://github.com/MMVverse/MMVshiny/issues/9}{issue #9} for the underlying mechanism).
+When \code{TRUE}, each generated observer becomes
+\code{SafeShiny::SafeObserveEvent(...)} (see the
+\href{https://github.com/pmxlab/SafeShiny}{SafeShiny} package) instead: an uncaught error is
+caught and recorded as an \code{"ERROR:"} validation note on the affected parameter's own
+\code{state$status}, refreshing its existing status icon, rather than crashing the session.
+\code{shiny::req()}/\code{shiny::validate()}'s intentional silent-stop conditions are
+unaffected either way. Requires the \code{SafeShiny} package to be installed when \code{TRUE};
+errors clearly at generation time otherwise rather than silently falling back to \code{FALSE}'s
+behavior.}
 
 \item{filename}{a character string path to an R-file where the R-code will be generated. If
 not specified a tempfile is created.}
