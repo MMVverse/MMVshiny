@@ -6,6 +6,26 @@
 
 ---
 
+## Optional SafeShiny integration: SafeObserveEvent()/SafeRenderUI() in generated observers/icons [RESOLVED]
+
+[Issue #14](https://github.com/MMVverse/MMVshiny/issues/14) | assignee: venelin | 2026-10-07 | resolved 2026-10-07 in v1.3.0
+
+Follow-up to the design discussion in #9: an uncaught error inside a plain `observeEvent()`/
+`observe()` terminates the whole Shiny session (confirmed via a deployed crash-test app), unlike
+an error inside a `reactive()` consumed only by a render output, which Shiny already converts into
+a localized, session-surviving error display on its own — #61's actual crash mechanism. The `Safe*`
+design from #9 was built as its own standalone package, [pmxlab/SafeShiny](https://github.com/pmxlab/SafeShiny)
+(kept separate since it's genuinely generic, no dependency on `state$status`/`SetStatus()`), rather
+than inside MMVshiny itself.
+
+Fixed in v1.3.0: `GenerateScriptCreatingObservers(useSafeShiny = FALSE)` and
+`GenerateScriptRenderingIcons(useSafeShiny = FALSE)` — both default to `FALSE`, generated output
+byte-for-byte unchanged either way. `useSafeShiny = TRUE` wires generated observers into
+`SafeShiny::SafeObserveEvent()` (catches and records an `"ERROR:"` status via the existing
+`SetStatus()`/`SetInfoIcon()` machinery — the crash-class bug is gone) and generated icon renders
+into `SafeShiny::SafeRenderUI()` (an observability hook only, since Shiny already degrades a failed
+`renderUI()` gracefully). `SafeShiny` added as `Suggests`/`Remotes`, not `Imports`.
+
 ## Remaining `spec[ID == id, ...]` unindexed boolean-filter scans [RESOLVED]
 
 [Issue #12](https://github.com/MMVverse/MMVshiny/issues/12) | assignee: venelin | 2026-10-06 | resolved 2026-10-06 in v1.2.3
