@@ -10,6 +10,7 @@ GenerateScriptRenderingIcons(
   outputObjectName = "output",
   stateObjectName = "state",
   ids = spec[STATUSICON == TRUE, ID],
+  useSafeShiny = FALSE,
   filename
 )
 }
@@ -24,6 +25,18 @@ GenerateScriptRenderingIcons(
 
 \item{ids}{a character vector of ids for which status icons should be rendered. Default is all ids in spec with
 STATUSICON == TRUE.}
+
+\item{useSafeShiny}{logical, default \code{FALSE}. When \code{FALSE}, generated icon renders
+are unchanged from before this argument existed: plain \code{renderUI(...)} calls. When
+\code{TRUE}, each becomes \code{SafeShiny::SafeRenderUI(...)} instead - this does not change
+what the user sees (Shiny already shows its own local error display for a failed
+\code{renderUI()}, same as any other render function), it only adds an observability hook and
+optional timing on top. No \code{onError} is wired here, unlike
+\code{\link{GenerateScriptCreatingObservers}}'s \code{useSafeShiny} - there's no obvious
+\code{state$status} bookkeeping to do in response to the icon's own rendering code failing
+(that would risk a confusing circularity, since the icon IS the status display). Requires the
+\code{SafeShiny} package to be installed when \code{TRUE}; errors clearly at generation time
+otherwise rather than silently falling back to \code{FALSE}'s behavior.}
 
 \item{filename}{a character string path to an R-file where the R-code will be generated. If
 not specified a tempfile is created.}
