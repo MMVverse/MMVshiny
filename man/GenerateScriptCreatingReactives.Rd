@@ -8,7 +8,8 @@ GenerateScriptCreatingReactives(
   spec,
   stateObjectName = "state",
   ids = spec[, unique(ID)],
-  filename
+  filename,
+  useSafeShiny = FALSE
 )
 }
 \arguments{
@@ -20,6 +21,15 @@ GenerateScriptCreatingReactives(
 
 \item{filename}{a character string path to an R-file where the R-code will be generated. If
 not specified a tempfile is created.}
+
+\item{useSafeShiny}{logical, default \code{FALSE}. When \code{FALSE}, generated reactives are
+plain \code{reactive(...)} calls, unchanged. When \code{TRUE}, each becomes
+\code{SafeShiny::SafeReactive(...)} (requires SafeShiny >= 0.3.0, see
+\href{https://github.com/pmxlab/SafeShiny/issues/4}{SafeShiny#4}): an error is recorded as an
+\code{"ERROR:"} validation note on the affected parameter's \code{state$status} (refreshing its
+status icon) and then re-raised unchanged, so Shiny's own graceful degradation of the consuming
+output still applies. Requires the \code{SafeShiny} package when \code{TRUE}; errors clearly at
+generation time otherwise.}
 }
 \value{
 a character string - the filepath to the generated R-script (same as filename if this
