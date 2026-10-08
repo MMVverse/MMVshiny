@@ -2042,6 +2042,14 @@ GenerateScriptRenderingIcons <- function(
 #' @param spec parameter specification table.
 #' @param stateObjectName a character string indicating the name of the MMVSola state object (default: "state").
 #' @param ids a character vector of ids for which reactive objects should be created. Default is all ids in spec.
+#' @param useSafeShiny logical, default \code{FALSE}. When \code{FALSE}, generated reactives are
+#' plain \code{reactive(...)} calls, unchanged. When \code{TRUE}, each becomes
+#' \code{SafeShiny::SafeReactive(...)} (requires SafeShiny >= 0.3.0, see
+#' \href{https://github.com/pmxlab/SafeShiny/issues/4}{SafeShiny#4}): an error is recorded as an
+#' \code{"ERROR:"} validation note on the affected parameter's \code{state$status} (refreshing its
+#' status icon) and then re-raised unchanged, so Shiny's own graceful degradation of the consuming
+#' output still applies. Requires the \code{SafeShiny} package when \code{TRUE}; errors clearly at
+#' generation time otherwise.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
 #' 
@@ -2049,7 +2057,18 @@ GenerateScriptRenderingIcons <- function(
 #' argument was provided).
 #' @export
 GenerateScriptCreatingReactives <- function(
-    spec, stateObjectName = 'state', ids = spec[, unique(ID)], filename) {
+    spec, stateObjectName = 'state', ids = spec[, unique(ID)], filename,
+    useSafeShiny = FALSE) {
+  
+  if(isTRUE(useSafeShiny) &&
+     (!requireNamespace("SafeShiny", quietly = TRUE) ||
+      utils::packageVersion("SafeShiny") < "0.3.0")) {
+    stop(
+      "GenerateScriptCreatingReactives: useSafeShiny = TRUE requires the 'SafeShiny' package ",
+      "(>= 0.3.0, for SafeReactive()). Install it (e.g. ",
+      "remotes::install_github(\"pmxlab/SafeShiny\")) or call with useSafeShiny = FALSE."
+    )
+  }
   
   if(missing(filename)) {
     filename <- tempfile(pattern = "CreateReactivesInServer.R", fileext = ".R")
@@ -2063,9 +2082,18 @@ GenerateScriptCreatingReactives <- function(
   cat("# This script should be sourced via `source('",filename,"', local=TRUE)` from within a\n", 
       "# shiny server function where the object ", stateObjectName, " exists.\n\n", sep = "")
   
-  code <- 
+  code <- if(isTRUE(useSafeShiny)) {
+    'ID <- SafeShiny::SafeReactive({Get(stateObj, "ID")}, onError = function(e) {
+      shiny::isolate({
+        stateObj %>% SetStatus("ID", validationNote = paste0("ERROR: ", conditionMessage(e)))
+        stateObj %>% SetInfoIcon("ID")
+      })
+    })
+    '
+  } else {
     'ID <- reactive({Get(stateObj, "ID")})
     '
+  }
   
   for(id in spec$ID) {
     codeToPut <- gsub("ID", id, code, fixed = TRUE)

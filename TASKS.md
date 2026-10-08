@@ -6,6 +6,13 @@
 
 ---
 
+## Use SafeShiny::SafeReactive() in generated reactives [RESOLVED]
+
+[Issue #16](https://github.com/MMVverse/MMVshiny/issues/16) | assignee: venelin | 2026-10-08 | resolved 2026-10-08 in v1.4.0
+
+Follow-up to [Issue #9](https://github.com/MMVverse/MMVshiny/issues/9): SafeShiny 0.3.0 adds `SafeReactive()` ([SafeShiny#4](https://github.com/pmxlab/SafeShiny/issues/4)).
+`GenerateScriptCreatingReactives(useSafeShiny = FALSE)` now optionally generates `SafeShiny::SafeReactive()` with an `onError` that records an `"ERROR:"` status/icon (then re-raises, so Shiny's native degradation is unchanged). SafeShiny requirement bumped to `>= 0.3.0` in `Suggests`.
+
 ## Optional SafeShiny integration: SafeObserveEvent()/SafeRenderUI() in generated observers/icons [RESOLVED]
 
 [Issue #14](https://github.com/MMVverse/MMVshiny/issues/14) | assignee: venelin | 2026-10-07 | resolved 2026-10-07 in v1.3.0
