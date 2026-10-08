@@ -1851,7 +1851,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(inputObj$countID, {
     cat2("\\nUSER INPUT on ID (count=", inputObj$countID, "): ", sep="")
     ProcessGuiInputEvent(s = stateObj, input = inputObj, output = outputObj, session = session, id = "ID")
-  }', onErrorArg, ', ignoreInit = TRUE)'),
+  }', onErrorArg, ', label = "userInput ID", ignoreInit = TRUE)'),
 
     default =
       paste0(
@@ -1859,7 +1859,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(GetDefault(stateObj, "ID"), {
     cat2("\\nDEFAULT CHANGED on ID: ", GetDefault(stateObj, "ID"), " ")
     ProcessDefaultChangedEvent(s = stateObj, id = "ID")
-  }', onErrorArg, ')'),
+  }', onErrorArg, ', label = "default ID")'),
 
     displayed =
       paste0(
@@ -1867,7 +1867,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(list(GetDisplayed(stateObj, "ID"), GetSource(stateObj, "ID")), {
     cat2("\\nDISPLAYED CHANGED on ", GetGuiId(stateObj, "ID"), ":", GetDisplayed(stateObj, "ID"), " ")
     ProcessDisplayedChangedEvent(s = stateObj, id = "ID")
-  }', onErrorArg, ')'),
+  }', onErrorArg, ', label = "displayed ID")'),
 
     SCInput =
       paste0(
@@ -1875,7 +1875,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(GetSCInput(stateObj, "ID"), {
     cat2("\\nSC INPUT on ID: ", GetSCInput(stateObj, "ID"), " ")
     ProcessSCInputEvent(s = stateObj, id = "ID")
-  }', onErrorArg, ', ignoreInit = FALSE)'),
+  }', onErrorArg, ', label = "SCInput ID", ignoreInit = FALSE)'),
 
     reportInput =
       paste0(
@@ -1883,7 +1883,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(GetReportInput(stateObj, "ID"), {
     cat2("\\nREPORT INPUT on ID: ", GetReportInput(stateObj, "ID"), " ")
     ProcessReportInputEvent(s = stateObj, id = "ID")
-  }', onErrorArg, ', ignoreInit = FALSE)'),
+  }', onErrorArg, ', label = "reportInput ID", ignoreInit = FALSE)'),
 
     resetCount =
       paste0(
@@ -1891,7 +1891,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(GetResetCount(stateObj, "ID"), {
     cat2("\\nRESET on ID: ", GetResetCount(stateObj, "ID"), " ")
     ProcessResetEvent(s = stateObj, id = "ID")
-  }', onErrorArg, ')'),
+  }', onErrorArg, ', label = "reset ID")'),
 
     min =
       paste0(
@@ -1899,7 +1899,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(GetMin(stateObj, "ID"), {
     cat2("\\nMIN CHANGED on ID: ", GetMin(stateObj, "ID"), " ")
     ProcessMinChangedEvent(s = stateObj, id = "ID")
-  }', onErrorArg, ')'),
+  }', onErrorArg, ', label = "min ID")'),
 
     max =
       paste0(
@@ -1907,7 +1907,7 @@ GenerateScriptCreatingObservers <- function(
   SafeShiny::SafeObserveEvent(GetMax(stateObj, "ID"), {
     cat2("\\nMAX CHANGED on ID: ", GetMax(stateObj, "ID"), " ")
     ProcessMaxChangedEvent(s = stateObj, id = "ID")
-  }', onErrorArg, ')')
+  }', onErrorArg, ', label = "max ID")')
   )
 
   if(isTRUE(useSafeShiny)) {
@@ -2014,13 +2014,15 @@ GenerateScriptRenderingIcons <- function(
       "# shiny server function or a state environment where the objects ", outputObjectName, " and ",
       stateObjectName, " exist.\n\n", sep = "")
   renderCall <- if(isTRUE(useSafeShiny)) "SafeShiny::SafeRenderUI" else "renderUI"
+  labelArg <- if(isTRUE(useSafeShiny)) ', label = "ID icon"' else ""
   for(id in ids) {
     code <- paste0('output[["prefixGuiIdIDicon"]] <- renderCall({\n',
                    '  tags$i(class = stateObj$statusIconClass[["ID"]],\n',
                    '         title = paste0(stateObj$statusTitle[["ID"]], "\n", stateObj$statusText[["ID"]]),\n',
                    '         style = paste0("color:",stateObj$statusIconColor[["ID"]], ";"))\n',
-                   ' })\n\n', sep="")
+                   ' }labelArg)\n\n', sep="")
     codeToPut <- gsub("prefixGuiId", prefixGuiId, code, fixed = TRUE)
+    codeToPut <- gsub('labelArg', labelArg, codeToPut, fixed = TRUE)
     codeToPut <- gsub("ID", id, codeToPut, fixed = TRUE)
     codeToPut <- gsub('stateObj', stateObjectName, codeToPut, fixed = TRUE)
     codeToPut <- gsub('renderCall', renderCall, codeToPut, fixed = TRUE)
@@ -2088,7 +2090,7 @@ GenerateScriptCreatingReactives <- function(
         stateObj %>% SetStatus("ID", validationNote = paste0("ERROR: ", conditionMessage(e)))
         stateObj %>% SetInfoIcon("ID")
       })
-    })
+    }, label = "ID")
     '
   } else {
     'ID <- reactive({Get(stateObj, "ID")})

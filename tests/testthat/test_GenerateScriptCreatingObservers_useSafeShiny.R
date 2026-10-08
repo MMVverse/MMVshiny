@@ -126,3 +126,18 @@ test_that("useSafeShiny = TRUE: a req()-style silent stop is not misreported as 
     expect_false(isTRUE(grepl("^ERROR:", status$validationNote)))
   })
 })
+
+test_that("useSafeShiny = TRUE gives every generated observer a readable label and parses", {
+  spec <- make_numeric_spec("HillIN")
+  outfile <- tempfile(fileext = ".R")
+  GenerateScriptCreatingObservers(
+    spec = spec, ids = "HillIN", useSafeShiny = TRUE, filename = outfile,
+    observerTypes = c("countID", "default", "displayed", "SCInput", "reportInput", "resetCount", "min", "max"))
+  code <- paste(readLines(outfile), collapse = "\n")
+
+  for (lab in c("userInput HillIN", "default HillIN", "displayed HillIN", "SCInput HillIN",
+                "reportInput HillIN", "reset HillIN", "min HillIN", "max HillIN")) {
+    expect_true(grepl(paste0('label = "', lab, '"'), code, fixed = TRUE), info = lab)
+  }
+  expect_error(parse(outfile), NA)
+})

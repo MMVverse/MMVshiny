@@ -77,3 +77,14 @@ test_that("useSafeShiny = TRUE: an error in the generated icon render is caught 
     expect_true(session$getStillAlive())
   })
 })
+
+test_that("useSafeShiny = TRUE labels the icon render; both variants parse", {
+  spec <- make_icon_spec("HillIN")
+  for (safe in c(FALSE, TRUE)) {
+    outfile <- tempfile(fileext = ".R")
+    GenerateScriptRenderingIcons(spec = spec, ids = "HillIN", useSafeShiny = safe, filename = outfile)
+    code <- paste(readLines(outfile), collapse = "\n")
+    expect_equal(grepl('label = "HillIN icon"', code, fixed = TRUE), safe)
+    expect_error(parse(outfile), NA)
+  }
+})
