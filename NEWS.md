@@ -1,3 +1,7 @@
+# MMVshiny 1.4.1
+
+* With `useSafeShiny = TRUE`, the generated observers, reactives and status icons now pass an explicit `label` (e.g. `reset <ID>`, `<ID>`, `<ID> icon`), so SafeShiny's timing output and flame chart are readable (#18).
+
 # MMVshiny 1.2.0
 
 * Added `checkbox input` TYPE: renders as `checkboxInput()`, wired as a reactive, and

@@ -21,3 +21,11 @@ test_that("useSafeShiny = TRUE generates SafeShiny::SafeReactive() with a status
   expect_true(grepl('SetInfoIcon("HillIN")', code, fixed = TRUE))
   expect_silent(parse(outfile))
 })
+
+test_that("useSafeShiny = TRUE labels the generated reactive with its ID and the script parses", {
+  spec <- data.table(ID = "HillIN")
+  outfile <- tempfile(fileext = ".R")
+  GenerateScriptCreatingReactives(spec = spec, useSafeShiny = TRUE, filename = outfile)
+  expect_true(grepl('label = "HillIN"', paste(readLines(outfile), collapse = "\n"), fixed = TRUE))
+  expect_error(parse(outfile), NA)
+})
