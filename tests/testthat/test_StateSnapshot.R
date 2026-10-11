@@ -165,16 +165,50 @@ test_that("a change made between InitState() and the first flush is not lost by 
   })
 })
 
+test_that("a report-style change of the validated value (default unchanged) is repaired by the first run", {
+  # Regression test for #24 (Cmp3 report in MMVSola): REPORT sets validated = NA with source
+  # "Default value"; the default observer's first run restores the default.
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  testServer(function(input, output, session) {
+    mk <- function(seed) {
+      s <- InitState(spec, stateId = paste0("r", seed), scriptsToSource = scripts, seed = seed)
+      SetStatus(s, "B", reportSource = "Default value")
+      SetEvent(s, "B", "REPORT")
+      SetReportInput(s, "B", NA_real_, flagSynchronous = TRUE)
+      s
+    }
+    live <- mk(FALSE)
+    seeded <- mk(TRUE)
+  }, {
+    session$flushReact()
+    # status fields may be added in a different order (reportSource vs validationNote)
+    norm <- function(s) { s$status <- lapply(s$status, function(x) x[order(names(x))]); s }
+    expect_identical(norm(ExtractStateSnapshot(seeded)), norm(ExtractStateSnapshot(live)))
+    expect_equal(as.numeric(GetDisplayed(seeded, "B")), round(2.345 * 3.14159, 2))
+  })
+})
+
 test_that("SkipSeededRun skips only the first run, and only if the value is unchanged", {
   st <- new.env()
   expect_false(SkipSeededRun(st, "default", "A", 1))  # unseeded
   st$seeded <- TRUE
   st$seedConsumed <- new.env()
-  st$seedSnapshot <- list(default = list(A = 1, B = 2))
+  st$seedSnapshot <- list(default = list(A = 1, B = 2),
+                          validated = list(A = 1, B = 2), status = list(A = list(source = "Default value"),
+                                                                           B = list(source = "Default value")),
+                          event = list(A = NA_character_, B = NA_character_))
+  st$validated <- list(A = 1, B = 2)
+  st$status <- list(A = list(source = "Default value"), B = list(source = "Default value"))
+  st$event <- list(A = NA_character_, B = NA_character_)
   expect_true(SkipSeededRun(st, "default", "A", 1))
   expect_false(SkipSeededRun(st, "default", "A", 1))  # consumed
   expect_false(SkipSeededRun(st, "default", "B", 3))  # changed
   expect_false(SkipSeededRun(st, "default", "B", 2))  # consumed by the previous call
+  st$seedConsumed <- new.env()
+  st$validated$A <- NA_real_                           # validated value changed since seeding
+  expect_false(SkipSeededRun(st, "default", "A", 1))
 })
 
 test_that("seedable = FALSE leaves generated observers unchanged, seedable = TRUE adds the SkipSeededRun guard", {

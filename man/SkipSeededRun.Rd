@@ -21,10 +21,12 @@ logical; \code{TRUE} if the handler can be skipped.
 \description{
 Used by the observers generated with \code{GenerateScriptCreatingObservers(seedable = TRUE)}.
 The first call for a given \code{kind} and \code{id} in a state returns \code{TRUE} only if
-the state was seeded and \code{value} is identical to the snapshot value, i.e. nothing the
-observer depends on has changed since seeding, so re-validating would reproduce the seeded
-result. Later calls always return \code{FALSE}.
+the state was seeded, \code{value} is identical to the snapshot value, and the validated value,
+source and event of \code{id} are identical to the snapshot, i.e. nothing the observer
+depends on or would overwrite has changed since seeding, so re-validating would reproduce
+the seeded result. Later calls always return \code{FALSE}. Must be called in a reactive
+context or \code{isolate()} (as the generated observer handlers are).
 }
 \examples{
-SkipSeededRun(new.env(), "default", "A", 1)
+SkipSeededRun(new.env(), "default", "A", 1)  # unseeded state: FALSE
 }

@@ -83,9 +83,11 @@ ExtractStateSnapshot <- function(state, ids = NULL) {
 #'
 #' Used by the observers generated with \code{GenerateScriptCreatingObservers(seedable = TRUE)}.
 #' The first call for a given \code{kind} and \code{id} in a state returns \code{TRUE} only if
-#' the state was seeded and \code{value} is identical to the snapshot value, i.e. nothing the
-#' observer depends on has changed since seeding, so re-validating would reproduce the seeded
-#' result. Later calls always return \code{FALSE}.
+#' the state was seeded, \code{value} is identical to the snapshot value, and the validated value,
+#' source and event of \code{id} are identical to the snapshot, i.e. nothing the observer
+#' depends on or would overwrite has changed since seeding, so re-validating would reproduce
+#' the seeded result. Later calls always return \code{FALSE}. Must be called in a reactive
+#' context or \code{isolate()} (as the generated observer handlers are).
 #'
 #' @param state a state object.
 #' @param kind character string, one of \code{"default"}, \code{"min"}, \code{"max"}.
@@ -93,7 +95,7 @@ ExtractStateSnapshot <- function(state, ids = NULL) {
 #' @param value the current value of the event expression of the observer.
 #' @return logical; \code{TRUE} if the handler can be skipped.
 #' @examples
-#' SkipSeededRun(new.env(), "default", "A", 1)
+#' SkipSeededRun(new.env(), "default", "A", 1)  # unseeded state: FALSE
 #' @export
 SkipSeededRun <- function(state, kind, id, value) {
   if(!isTRUE(state$seeded)) {
@@ -104,7 +106,13 @@ SkipSeededRun <- function(state, kind, id, value) {
     return(FALSE)
   }
   state$seedConsumed[[key]] <- TRUE
-  identical(value, state$seedSnapshot[[kind]][[id]])
+  snapshot <- state$seedSnapshot
+  # The event value must be unchanged, and so must the state of the id itself: e.g. a report
+  # upload sets validated = NA with source "Default value" which the first run would repair.
+  identical(value, snapshot[[kind]][[id]]) &&
+    identical(state$validated[[id]], snapshot$validated[[id]]) &&
+    identical(state$status[[id]]$source, snapshot$status[[id]]$source) &&
+    identical(state$event[[id]], snapshot$event[[id]])
 }
 
 # Write the snapshot values into the reactiveValues of a state.

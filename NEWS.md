@@ -1,6 +1,6 @@
 # MMVshiny 1.6.1
 
-* Fix (#24): with `GenerateScriptCreatingObservers(seedable = TRUE)`, the default/min/max observers of a seeded state skipped their first run unconditionally (`ignoreInit`), losing any change made to the state between `InitState(seed = TRUE)` and the first flush (e.g. uploading a Science Cloud file left predicted values N/A and the prediction plot empty). The handlers are now guarded by the new `SkipSeededRun()`, which skips the first run only if the event value equals the snapshot value; resetCount observers always run. Regenerate the observer scripts (they are regenerated at app start).
+* Fix (#24): with `GenerateScriptCreatingObservers(seedable = TRUE)`, the default/min/max observers of a seeded state skipped their first run unconditionally (`ignoreInit`), losing any change made to the state between `InitState(seed = TRUE)` and the first flush (e.g. uploading a Science Cloud file left predicted values N/A and the prediction plot empty). The handlers are now guarded by the new `SkipSeededRun()`, which skips the first run only if the event value equals the snapshot value; resetCount observers always run. The skip additionally requires the id's validated value, source and event to be unchanged since seeding (a report upload sets `validated = NA` with source "Default value", which the first run repairs). Regenerate the observer scripts (they are regenerated at app start).
 
 # MMVshiny 1.6.0
 
