@@ -51,11 +51,13 @@ behavior.}
 \item{filename}{a character string path to an R-file where the R-code will be generated. If
 not specified a tempfile is created.}
 
-\item{seedable}{logical, default \code{FALSE}. If \code{TRUE}, the generated resetCount, default,
-min and max observers are created with \code{ignoreInit = isTRUE(<state>$seeded)}, so that in a
-state created by \code{\link{InitState}(seed = TRUE)} they skip the first run (their event
-expression is still evaluated once to register dependencies, only the handler is skipped). In
-an unseeded state the observers behave exactly as without this argument.}
+\item{seedable}{logical, default \code{FALSE}. If \code{TRUE}, the handlers of the generated
+default, min and max observers are guarded by \code{\link{SkipSeededRun}}, so that in a state
+created by \code{\link{InitState}(seed = TRUE)} their first run is skipped if the value of the
+event expression equals the snapshot value (the event expression is still evaluated, which
+registers dependencies; only the handler is skipped). If the value changed between
+\code{InitState()} and the first run, the handler runs. In an unseeded state the observers
+behave exactly as without this argument.}
 }
 \value{
 a character string - the filepath to the generated R-script (same as filename if this

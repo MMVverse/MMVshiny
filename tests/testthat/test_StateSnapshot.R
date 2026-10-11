@@ -143,18 +143,54 @@ test_that("a failing build warns and InitState(seed = TRUE) falls back to the li
   expect_false(InitState(spec, stateId = "ok2", seed = FALSE)$seeded)
 })
 
-test_that("seedable = FALSE leaves generated observers unchanged, seedable = TRUE adds ignoreInit", {
+test_that("a change made between InitState() and the first flush is not lost by the seeded first-run skip", {
+  # Regression test for #24: e.g. the MMVSola upload sets Science Cloud data synchronously in the
+  # same observer that creates the state; the observers' deferred first run must then still run.
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  testServer(function(input, output, session) {
+    mk <- function(seed) {
+      s <- InitState(spec, stateId = paste0("s", seed), scriptsToSource = scripts, seed = seed)
+      ProcessGuiInputEvent(s, input = NULL, id = "A", inputValue = 10)
+      s
+    }
+    live <- mk(FALSE)
+    seeded <- mk(TRUE)
+  }, {
+    session$flushReact()
+    expect_true(seeded$seeded)
+    expect_identical(ExtractStateSnapshot(seeded), ExtractStateSnapshot(live))
+    expect_equal(as.numeric(GetDisplayed(seeded, "B")), round(10 * 3.14159, 2))
+  })
+})
+
+test_that("SkipSeededRun skips only the first run, and only if the value is unchanged", {
+  st <- new.env()
+  expect_false(SkipSeededRun(st, "default", "A", 1))  # unseeded
+  st$seeded <- TRUE
+  st$seedConsumed <- new.env()
+  st$seedSnapshot <- list(default = list(A = 1, B = 2))
+  expect_true(SkipSeededRun(st, "default", "A", 1))
+  expect_false(SkipSeededRun(st, "default", "A", 1))  # consumed
+  expect_false(SkipSeededRun(st, "default", "B", 3))  # changed
+  expect_false(SkipSeededRun(st, "default", "B", 2))  # consumed by the previous call
+})
+
+test_that("seedable = FALSE leaves generated observers unchanged, seedable = TRUE adds the SkipSeededRun guard", {
   spec <- make_chain_spec()
   for(safe in c(FALSE, TRUE)) {
     skip_if(safe && !requireNamespace("SafeShiny", quietly = TRUE))
-    f0 <- GenerateScriptCreatingObservers(spec, ids = "A", observerTypes = c("resetCount", "default", "min", "max"),
+    types <- c("resetCount", "default", "min", "max")
+    f0 <- GenerateScriptCreatingObservers(spec, ids = "A", observerTypes = types,
                                           useSafeShiny = safe, filename = tempfile(fileext = ".R"))
-    f1 <- GenerateScriptCreatingObservers(spec, ids = "A", observerTypes = c("resetCount", "default", "min", "max"),
+    f1 <- GenerateScriptCreatingObservers(spec, ids = "A", observerTypes = types,
                                           useSafeShiny = safe, seedable = TRUE, filename = tempfile(fileext = ".R"))
     code0 <- paste(readLines(f0), collapse = "\n")
     code1 <- paste(readLines(f1), collapse = "\n")
-    expect_false(grepl("seeded", code0, fixed = TRUE))
-    expect_equal(lengths(regmatches(code1, gregexpr("ignoreInit = isTRUE(state$seeded)", code1, fixed = TRUE))), 4L)
+    expect_false(grepl("Seeded", code0, fixed = TRUE))
+    expect_equal(lengths(regmatches(code1, gregexpr("SkipSeededRun(state,", code1, fixed = TRUE))), 3L)
+    expect_false(grepl("ignoreInit = isTRUE", code1, fixed = TRUE))
     expect_no_error(parse(text = code1))
   }
 })

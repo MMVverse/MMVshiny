@@ -1,3 +1,7 @@
+# MMVshiny 1.6.1
+
+* Fix (#24): with `GenerateScriptCreatingObservers(seedable = TRUE)`, the default/min/max observers of a seeded state skipped their first run unconditionally (`ignoreInit`), losing any change made to the state between `InitState(seed = TRUE)` and the first flush (e.g. uploading a Science Cloud file left predicted values N/A and the prediction plot empty). The handlers are now guarded by the new `SkipSeededRun()`, which skips the first run only if the event value equals the snapshot value; resetCount observers always run. Regenerate the observer scripts (they are regenerated at app start).
+
 # MMVshiny 1.6.0
 
 * Seeded initial state (#21): `BuildStateSnapshot()` settles one live state per R process and caches a snapshot of the initialised values (validated, displayed, status, icon, event, resetCount, plus default/min/max for comparison), keyed by the spec, the generated scripts and the package versions. `InitState(seed = TRUE)` writes that snapshot into new states before their observers are created, and `GenerateScriptCreatingObservers(seedable = TRUE)` creates the resetCount/default/min/max observers with `ignoreInit` for seeded states. Falls back to the live path if no snapshot can be built. New helpers `ExtractStateSnapshot()` and `ClearStateSnapshotCache()`. Snapshot build and seeding are labelled SafeShiny reactives (`seedState`) when SafeShiny is installed.

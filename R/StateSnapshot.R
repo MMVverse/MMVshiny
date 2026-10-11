@@ -6,9 +6,9 @@
 # the default values and write validated/displayed/status/icon values into the
 # state. The functions below settle one live state once per R process, keep a
 # snapshot of it, and let InitState(seed = TRUE) write the snapshot into new
-# states before their observers are created, so the observers (created with
-# ignoreInit = TRUE, see the `seedable` argument of GenerateScriptCreatingObservers)
-# skip the first run.
+# states before their observers are created, so the observers (guarded by
+# SkipSeededRun, see the `seedable` argument of GenerateScriptCreatingObservers)
+# skip their first run when nothing they depend on has changed.
 
 # Process-wide cache of snapshots: key -> snapshot.
 snapshotCache <- new.env()
@@ -77,6 +77,34 @@ ExtractStateSnapshot <- function(state, ids = NULL) {
   })
   class(snapshot) <- "MMVshinyStateSnapshot"
   snapshot
+}
+
+#' Decide whether the first run of a seeded observer can be skipped
+#'
+#' Used by the observers generated with \code{GenerateScriptCreatingObservers(seedable = TRUE)}.
+#' The first call for a given \code{kind} and \code{id} in a state returns \code{TRUE} only if
+#' the state was seeded and \code{value} is identical to the snapshot value, i.e. nothing the
+#' observer depends on has changed since seeding, so re-validating would reproduce the seeded
+#' result. Later calls always return \code{FALSE}.
+#'
+#' @param state a state object.
+#' @param kind character string, one of \code{"default"}, \code{"min"}, \code{"max"}.
+#' @param id character string, the input id.
+#' @param value the current value of the event expression of the observer.
+#' @return logical; \code{TRUE} if the handler can be skipped.
+#' @examples
+#' SkipSeededRun(new.env(), "default", "A", 1)
+#' @export
+SkipSeededRun <- function(state, kind, id, value) {
+  if(!isTRUE(state$seeded)) {
+    return(FALSE)
+  }
+  key <- paste(kind, id, sep = ":")
+  if(isTRUE(state$seedConsumed[[key]])) {
+    return(FALSE)
+  }
+  state$seedConsumed[[key]] <- TRUE
+  identical(value, state$seedSnapshot[[kind]][[id]])
 }
 
 # Write the snapshot values into the reactiveValues of a state.

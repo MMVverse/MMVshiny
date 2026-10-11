@@ -309,6 +309,7 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
   
   # Seed the state from the cached snapshot before any observers exist.
   state$seeded <- FALSE
+  state$seedConsumed <- new.env()
   if(!isFALSE(seed)) {
     snapshot <- if(inherits(seed, "MMVshinyStateSnapshot")) {
       seed
@@ -317,6 +318,7 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
     }
     if(!is.null(snapshot) && setequal(names(snapshot$validated), shiny::isolate(names(state$event)))) {
       SeedState(state, snapshot)
+      state$seedSnapshot <- snapshot
       state$seeded <- TRUE
     }
   }
@@ -1763,11 +1765,13 @@ for(id in ids) {
 #' behavior.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
-#' @param seedable logical, default \code{FALSE}. If \code{TRUE}, the generated resetCount, default,
-#' min and max observers are created with \code{ignoreInit = isTRUE(<state>$seeded)}, so that in a
-#' state created by \code{\link{InitState}(seed = TRUE)} they skip the first run (their event
-#' expression is still evaluated once to register dependencies, only the handler is skipped). In
-#' an unseeded state the observers behave exactly as without this argument.
+#' @param seedable logical, default \code{FALSE}. If \code{TRUE}, the handlers of the generated
+#' default, min and max observers are guarded by \code{\link{SkipSeededRun}}, so that in a state
+#' created by \code{\link{InitState}(seed = TRUE)} their first run is skipped if the value of the
+#' event expression equals the snapshot value (the event expression is still evaluated, which
+#' registers dependencies; only the handler is skipped). If the value changed between
+#' \code{InitState()} and the first run, the handler runs. In an unseeded state the observers
+#' behave exactly as without this argument.
 #'
 #' @return a character string - the filepath to the generated R-script (same as filename if this
 #' argument was provided).
@@ -1943,12 +1947,18 @@ GenerateScriptCreatingObservers <- function(
     codeTemplates <- safeCodeTemplates
   }
 
-  # Observers of a seeded state (see InitState(seed = TRUE)) must not re-run their first
-  # validation: the seeded values are already the settled result of that run. The event
-  # expression is still evaluated once on creation, which registers the dependencies.
+  # Observers of a seeded state (see InitState(seed = TRUE)) skip their first run only if the
+  # value of their event expression is identical to the snapshot value: the state can be changed
+  # between InitState() and the first flush (e.g. SC raw data set synchronously in the same
+  # observer), in which case the first run is needed. The event expression is evaluated on every
+  # run, which also registers the dependencies. resetCount observers always run: their handler
+  # is a no-op unless the event is "INIT", which a seeded state does not have.
   if(isTRUE(seedable)) {
-    for(obsType in c("resetCount", "default", "min", "max")) {
-      codeTemplates[[obsType]] <- sub("\\)\\s*$", ", ignoreInit = isTRUE(stateObj$seeded))", codeTemplates[[obsType]])
+    getter <- c(default = "GetDefault", min = "GetMin", max = "GetMax")
+    for(obsType in names(getter)) {
+      guardOpen <- paste0(', {\n    if(!SkipSeededRun(stateObj, "', obsType, '", "ID", ', getter[[obsType]], '(stateObj, "ID"))) {\n')
+      tpl <- sub(", \\{\\n", guardOpen, codeTemplates[[obsType]])
+      codeTemplates[[obsType]] <- sub("\\n  \\}", "\n    }\n  }", tpl)
     }
   }
 
