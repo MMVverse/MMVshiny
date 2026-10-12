@@ -9,8 +9,7 @@ InitState(
   stateId = "<auto>",
   listObjects = NULL,
   FLAG_ignoreNameConflicts = FALSE,
-  scriptsToSource = NULL,
-  seed = FALSE
+  scriptsToSource = NULL
 )
 }
 \arguments{
@@ -28,14 +27,6 @@ with the names created in the state during initialization (see the full list in 
 listObjects and the names created internally during state initialization.}
 
 \item{scriptsToSource}{a character vector of script file paths to source in the state environment.}
-
-\item{seed}{\code{FALSE} (default), \code{TRUE} or a snapshot from \code{\link{BuildStateSnapshot}}.
-If \code{TRUE}, the snapshot of the settled initial state for this \code{spec}, \code{listObjects}
-and \code{scriptsToSource} is taken from a process-wide cache (built on first use, see
-\code{\link{BuildStateSnapshot}}) and written into the new state before \code{scriptsToSource}
-are sourced, so that observers generated with \code{seedable = TRUE} (see
-\code{\link{GenerateScriptCreatingObservers}}) skip their first run. If no snapshot can be
-built, the state is initialised the live way.}
 }
 \value{
 an initialized state environment containing the following objects (created in this order):
@@ -71,7 +62,6 @@ column of spec
 \item max: A list object containing the max value or parsed expression for each numeric input parameter read from the MAX column of spec
 \item maxNote: A list object containing the max value note or parsed expression for each numeric input parameter read from the MAXNOTE
 column of spec
-\item seeded: \code{TRUE} if the state was seeded from a snapshot, otherwise \code{FALSE}.
 \item objects created from the listObjects argument
 \item objects created from sourcing the R scripts in the scriptsToSource argument
 }
