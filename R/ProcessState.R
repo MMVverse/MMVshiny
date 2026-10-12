@@ -126,6 +126,13 @@ NextStateId <- function() {
 #' @param listObjects a named list of objects to be added to the state environment. No checks are done for conflicts
 #' with the names created in the state during initialization (see the full list in the Value section).
 #' @param scriptsToSource a character vector of script file paths to source in the state environment.
+#' @param seed \code{FALSE} (default), \code{TRUE} or a snapshot from \code{\link{BuildStateSnapshot}}.
+#' If \code{TRUE}, the snapshot of the settled initial state for this \code{spec}, \code{listObjects}
+#' and \code{scriptsToSource} is taken from a process-wide cache (built on first use, see
+#' \code{\link{BuildStateSnapshot}}) and written into the new state before \code{scriptsToSource}
+#' are sourced, so that observers generated with \code{seedable = TRUE} (see
+#' \code{\link{GenerateScriptCreatingObservers}}) skip their first run. If no snapshot can be
+#' built, the state is initialised the live way.
 #' 
 #' @return an initialized state environment containing the following objects (created in this order):
 #' * MYSTATE: A reference to the state object itself
@@ -159,6 +166,7 @@ NextStateId <- function() {
 #' * max: A list object containing the max value or parsed expression for each numeric input parameter read from the MAX column of spec
 #' * maxNote: A list object containing the max value note or parsed expression for each numeric input parameter read from the MAXNOTE 
 #' column of spec
+#' * seeded: \code{TRUE} if the state was seeded from a snapshot, otherwise \code{FALSE}.
 #' * objects created from the listObjects argument
 #' * objects created from sourcing the R scripts in the scriptsToSource argument
 #' 
@@ -167,7 +175,8 @@ NextStateId <- function() {
 #' @importFrom R.utils System
 #' @export
 #' @md
-InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreNameConflicts = FALSE, scriptsToSource = NULL) {
+InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreNameConflicts = FALSE, scriptsToSource = NULL,
+                      seed = FALSE) {
   spec <- as.data.table(spec) 
   setkey(spec, ID)
   
@@ -297,6 +306,20 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
   }
   tEnd3 <- R.utils::System$currentTimeMillis()
   cat("Create state objects: ", tEnd3-tStart3, " ms\n")
+  
+  # Seed the state from the cached snapshot before any observers exist.
+  state$seeded <- FALSE
+  if(!isFALSE(seed)) {
+    snapshot <- if(inherits(seed, "MMVshinyStateSnapshot")) {
+      seed
+    } else {
+      BuildStateSnapshot(spec, listObjects = listObjects, scriptsToSource = scriptsToSource)
+    }
+    if(!is.null(snapshot) && setequal(names(snapshot$validated), shiny::isolate(names(state$event)))) {
+      SeedState(state, snapshot)
+      state$seeded <- TRUE
+    }
+  }
   
   # Source the scripts in the state environment
   if(is.character(scriptsToSource) && length(scriptsToSource) > 0) {
@@ -1740,6 +1763,11 @@ for(id in ids) {
 #' behavior.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
+#' @param seedable logical, default \code{FALSE}. If \code{TRUE}, the generated resetCount, default,
+#' min and max observers are created with \code{ignoreInit = isTRUE(<state>$seeded)}, so that in a
+#' state created by \code{\link{InitState}(seed = TRUE)} they skip the first run (their event
+#' expression is still evaluated once to register dependencies, only the handler is skipped). In
+#' an unseeded state the observers behave exactly as without this argument.
 #'
 #' @return a character string - the filepath to the generated R-script (same as filename if this
 #' argument was provided).
@@ -1752,7 +1780,8 @@ GenerateScriptCreatingObservers <- function(
     ids = unique(spec$ID),
     observerTypes = c("countID", "default", "displayed", "SCInput", "reportInput", "resetCount", "min", "max"),
     useSafeShiny = FALSE,
-    filename) {
+    filename,
+    seedable = FALSE) {
 
   if(missing(filename)) {
     filename <- tempfile(pattern = "GenerateScriptCreatingObservers_", fileext = ".R")
@@ -1912,6 +1941,15 @@ GenerateScriptCreatingObservers <- function(
 
   if(isTRUE(useSafeShiny)) {
     codeTemplates <- safeCodeTemplates
+  }
+
+  # Observers of a seeded state (see InitState(seed = TRUE)) must not re-run their first
+  # validation: the seeded values are already the settled result of that run. The event
+  # expression is still evaluated once on creation, which registers the dependencies.
+  if(isTRUE(seedable)) {
+    for(obsType in c("resetCount", "default", "min", "max")) {
+      codeTemplates[[obsType]] <- sub("\\)\\s*$", ", ignoreInit = isTRUE(stateObj$seeded))", codeTemplates[[obsType]])
+    }
   }
 
   for(id in ids) {
