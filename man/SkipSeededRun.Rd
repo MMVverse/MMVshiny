@@ -16,17 +16,15 @@ SkipSeededRun(state, kind, id, value)
 \item{value}{the current value of the event expression of the observer.}
 }
 \value{
-logical; \code{TRUE} if the handler can be skipped.
+logical; \code{TRUE} only for the first call per \code{kind} and \code{id} in a seeded
+state when nothing changed since seeding, i.e. the handler can be skipped.
 }
 \description{
-Used by the observers generated with \code{GenerateScriptCreatingObservers(seedable = TRUE)}.
-The first call for a given \code{kind} and \code{id} in a state returns \code{TRUE} only if
-the state was seeded, \code{value} is identical to the snapshot value, and the validated value,
-source and event of \code{id} are identical to the snapshot, i.e. nothing the observer
-depends on or would overwrite has changed since seeding, so re-validating would reproduce
-the seeded result. Later calls always return \code{FALSE}. Must be called in a reactive
-context or \code{isolate()} (as the generated observer handlers are).
+Called by the observers generated with \code{GenerateScriptCreatingObservers(seedable = TRUE)};
+not meant to be called directly. See \code{\link{InitState}}, section "Seeded states". Must be
+called in a reactive context or \code{isolate()}.
 }
 \examples{
 SkipSeededRun(new.env(), "default", "A", 1)  # unseeded state: FALSE
 }
+\keyword{internal}

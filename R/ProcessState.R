@@ -127,12 +127,24 @@ NextStateId <- function() {
 #' with the names created in the state during initialization (see the full list in the Value section).
 #' @param scriptsToSource a character vector of script file paths to source in the state environment.
 #' @param seed \code{FALSE} (default), \code{TRUE} or a snapshot from \code{\link{BuildStateSnapshot}}.
-#' If \code{TRUE}, the snapshot of the settled initial state for this \code{spec}, \code{listObjects}
-#' and \code{scriptsToSource} is taken from a process-wide cache (built on first use, see
-#' \code{\link{BuildStateSnapshot}}) and written into the new state before \code{scriptsToSource}
-#' are sourced, so that observers generated with \code{seedable = TRUE} (see
-#' \code{\link{GenerateScriptCreatingObservers}}) skip their first run. If no snapshot can be
-#' built, the state is initialised the live way.
+#' See the section "Seeded states".
+#'
+#' @section Seeded states:
+#' With \code{seed = TRUE} the new state is not initialised by running the reset, default, min and
+#' max observers of every input once: the settled result of that computation, built once per R
+#' process by \code{\link{BuildStateSnapshot}} for the same \code{spec}, \code{listObjects} and
+#' \code{scriptsToSource}, is written into the state before \code{scriptsToSource} are sourced, and
+#' \code{state$seeded} is set to \code{TRUE}. If no snapshot can be built, the state is
+#' initialised the live way.
+#'
+#' The default, min and max observers must be generated with
+#' \code{\link{GenerateScriptCreatingObservers}(seedable = TRUE)}. In a seeded state each of them
+#' skips the body of its first run - and only that - if neither its event value nor the validated
+#' value, source and event of its input changed since seeding. Otherwise the body runs as usual:
+#' the state can be changed between \code{InitState()} and the first reactive flush (e.g. when an
+#' uploaded Science Cloud file or report is applied), and the first run is then needed to process
+#' that change. Reset observers need no guard, since the seeded event is already cleared. The
+#' check is made by \code{\link{SkipSeededRun}}, which generated code calls.
 #' 
 #' @return an initialized state environment containing the following objects (created in this order):
 #' * MYSTATE: A reference to the state object itself
@@ -1765,13 +1777,9 @@ for(id in ids) {
 #' behavior.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
-#' @param seedable logical, default \code{FALSE}. If \code{TRUE}, the handlers of the generated
-#' default, min and max observers are guarded by \code{\link{SkipSeededRun}}, so that in a state
-#' created by \code{\link{InitState}(seed = TRUE)} their first run is skipped if the value of the
-#' event expression equals the snapshot value (the event expression is still evaluated, which
-#' registers dependencies; only the handler is skipped). If the value changed between
-#' \code{InitState()} and the first run, the handler runs. In an unseeded state the observers
-#' behave exactly as without this argument.
+#' @param seedable logical, default \code{FALSE}. If \code{TRUE}, the default, min and max
+#' observers are generated so that in a seeded state (see \code{\link{InitState}}, section "Seeded
+#' states") their first run is skipped when safe. Unseeded states are not affected.
 #'
 #' @return a character string - the filepath to the generated R-script (same as filename if this
 #' argument was provided).
