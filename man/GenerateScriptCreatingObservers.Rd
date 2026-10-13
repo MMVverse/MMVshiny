@@ -13,7 +13,8 @@ GenerateScriptCreatingObservers(
   observerTypes = c("countID", "default", "displayed", "SCInput", "reportInput",
     "resetCount", "min", "max"),
   useSafeShiny = FALSE,
-  filename
+  filename,
+  seedable = FALSE
 )
 }
 \arguments{
@@ -49,6 +50,10 @@ behavior.}
 
 \item{filename}{a character string path to an R-file where the R-code will be generated. If
 not specified a tempfile is created.}
+
+\item{seedable}{logical, default \code{FALSE}. If \code{TRUE}, the default, min and max
+observers are generated so that in a seeded state (see \code{\link{InitState}}, section "Seeded
+states") their first run is skipped when safe. Unseeded states are not affected.}
 }
 \value{
 a character string - the filepath to the generated R-script (same as filename if this

@@ -126,6 +126,25 @@ NextStateId <- function() {
 #' @param listObjects a named list of objects to be added to the state environment. No checks are done for conflicts
 #' with the names created in the state during initialization (see the full list in the Value section).
 #' @param scriptsToSource a character vector of script file paths to source in the state environment.
+#' @param seed \code{FALSE} (default), \code{TRUE} or a snapshot from \code{\link{BuildStateSnapshot}}.
+#' See the section "Seeded states".
+#'
+#' @section Seeded states:
+#' With \code{seed = TRUE} the new state is not initialised by running the reset, default, min and
+#' max observers of every input once: the settled result of that computation, built once per R
+#' process by \code{\link{BuildStateSnapshot}} for the same \code{spec}, \code{listObjects} and
+#' \code{scriptsToSource}, is written into the state before \code{scriptsToSource} are sourced, and
+#' \code{state$seeded} is set to \code{TRUE}. If no snapshot can be built, the state is
+#' initialised the live way.
+#'
+#' The default, min and max observers must be generated with
+#' \code{\link{GenerateScriptCreatingObservers}(seedable = TRUE)}. In a seeded state each of them
+#' skips the body of its first run - and only that - if neither its event value nor the validated
+#' value, source and event of its input changed since seeding. Otherwise the body runs as usual:
+#' the state can be changed between \code{InitState()} and the first reactive flush (e.g. when an
+#' uploaded Science Cloud file or report is applied), and the first run is then needed to process
+#' that change. Reset observers need no guard, since the seeded event is already cleared. The
+#' check is made by \code{\link{SkipSeededRun}}, which generated code calls.
 #' 
 #' @return an initialized state environment containing the following objects (created in this order):
 #' * MYSTATE: A reference to the state object itself
@@ -159,6 +178,7 @@ NextStateId <- function() {
 #' * max: A list object containing the max value or parsed expression for each numeric input parameter read from the MAX column of spec
 #' * maxNote: A list object containing the max value note or parsed expression for each numeric input parameter read from the MAXNOTE 
 #' column of spec
+#' * seeded: \code{TRUE} if the state was seeded from a snapshot, otherwise \code{FALSE}.
 #' * objects created from the listObjects argument
 #' * objects created from sourcing the R scripts in the scriptsToSource argument
 #' 
@@ -167,7 +187,8 @@ NextStateId <- function() {
 #' @importFrom R.utils System
 #' @export
 #' @md
-InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreNameConflicts = FALSE, scriptsToSource = NULL) {
+InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreNameConflicts = FALSE, scriptsToSource = NULL,
+                      seed = FALSE) {
   spec <- as.data.table(spec) 
   setkey(spec, ID)
   
@@ -297,6 +318,22 @@ InitState <- function(spec, stateId = "<auto>", listObjects = NULL, FLAG_ignoreN
   }
   tEnd3 <- R.utils::System$currentTimeMillis()
   cat("Create state objects: ", tEnd3-tStart3, " ms\n")
+  
+  # Seed the state from the cached snapshot before any observers exist.
+  state$seeded <- FALSE
+  state$seedConsumed <- new.env()
+  if(!isFALSE(seed)) {
+    snapshot <- if(inherits(seed, "MMVshinyStateSnapshot")) {
+      seed
+    } else {
+      BuildStateSnapshot(spec, listObjects = listObjects, scriptsToSource = scriptsToSource)
+    }
+    if(!is.null(snapshot) && setequal(names(snapshot$validated), shiny::isolate(names(state$event)))) {
+      SeedState(state, snapshot)
+      state$seedSnapshot <- snapshot
+      state$seeded <- TRUE
+    }
+  }
   
   # Source the scripts in the state environment
   if(is.character(scriptsToSource) && length(scriptsToSource) > 0) {
@@ -1740,6 +1777,9 @@ for(id in ids) {
 #' behavior.
 #' @param filename a character string path to an R-file where the R-code will be generated. If
 #' not specified a tempfile is created.
+#' @param seedable logical, default \code{FALSE}. If \code{TRUE}, the default, min and max
+#' observers are generated so that in a seeded state (see \code{\link{InitState}}, section "Seeded
+#' states") their first run is skipped when safe. Unseeded states are not affected.
 #'
 #' @return a character string - the filepath to the generated R-script (same as filename if this
 #' argument was provided).
@@ -1752,7 +1792,8 @@ GenerateScriptCreatingObservers <- function(
     ids = unique(spec$ID),
     observerTypes = c("countID", "default", "displayed", "SCInput", "reportInput", "resetCount", "min", "max"),
     useSafeShiny = FALSE,
-    filename) {
+    filename,
+    seedable = FALSE) {
 
   if(missing(filename)) {
     filename <- tempfile(pattern = "GenerateScriptCreatingObservers_", fileext = ".R")
@@ -1912,6 +1953,21 @@ GenerateScriptCreatingObservers <- function(
 
   if(isTRUE(useSafeShiny)) {
     codeTemplates <- safeCodeTemplates
+  }
+
+  # Observers of a seeded state (see InitState(seed = TRUE)) skip their first run only if the
+  # value of their event expression is identical to the snapshot value: the state can be changed
+  # between InitState() and the first flush (e.g. SC raw data set synchronously in the same
+  # observer), in which case the first run is needed. The event expression is evaluated on every
+  # run, which also registers the dependencies. resetCount observers always run: their handler
+  # is a no-op unless the event is "INIT", which a seeded state does not have.
+  if(isTRUE(seedable)) {
+    getter <- c(default = "GetDefault", min = "GetMin", max = "GetMax")
+    for(obsType in names(getter)) {
+      guardOpen <- paste0(', {\n    if(!SkipSeededRun(stateObj, "', obsType, '", "ID", ', getter[[obsType]], '(stateObj, "ID"))) {\n')
+      tpl <- sub(", \\{\\n", guardOpen, codeTemplates[[obsType]])
+      codeTemplates[[obsType]] <- sub("\\n  \\}", "\n    }\n  }", tpl)
+    }
   }
 
   for(id in ids) {

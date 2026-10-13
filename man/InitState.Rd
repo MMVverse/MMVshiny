@@ -9,7 +9,8 @@ InitState(
   stateId = "<auto>",
   listObjects = NULL,
   FLAG_ignoreNameConflicts = FALSE,
-  scriptsToSource = NULL
+  scriptsToSource = NULL,
+  seed = FALSE
 )
 }
 \arguments{
@@ -27,6 +28,9 @@ with the names created in the state during initialization (see the full list in 
 listObjects and the names created internally during state initialization.}
 
 \item{scriptsToSource}{a character vector of script file paths to source in the state environment.}
+
+\item{seed}{\code{FALSE} (default), \code{TRUE} or a snapshot from \code{\link{BuildStateSnapshot}}.
+See the section "Seeded states".}
 }
 \value{
 an initialized state environment containing the following objects (created in this order):
@@ -62,6 +66,7 @@ column of spec
 \item max: A list object containing the max value or parsed expression for each numeric input parameter read from the MAX column of spec
 \item maxNote: A list object containing the max value note or parsed expression for each numeric input parameter read from the MAXNOTE
 column of spec
+\item seeded: \code{TRUE} if the state was seeded from a snapshot, otherwise \code{FALSE}.
 \item objects created from the listObjects argument
 \item objects created from sourcing the R scripts in the scriptsToSource argument
 }
@@ -69,3 +74,22 @@ column of spec
 \description{
 Initialize state object based on a parameter specification
 }
+\section{Seeded states}{
+
+With \code{seed = TRUE} the new state is not initialised by running the reset, default, min and
+max observers of every input once: the settled result of that computation, built once per R
+process by \code{\link{BuildStateSnapshot}} for the same \code{spec}, \code{listObjects} and
+\code{scriptsToSource}, is written into the state before \code{scriptsToSource} are sourced, and
+\code{state$seeded} is set to \code{TRUE}. If no snapshot can be built, the state is
+initialised the live way.
+
+The default, min and max observers must be generated with
+\code{\link{GenerateScriptCreatingObservers}(seedable = TRUE)}. In a seeded state each of them
+skips the body of its first run - and only that - if neither its event value nor the validated
+value, source and event of its input changed since seeding. Otherwise the body runs as usual:
+the state can be changed between \code{InitState()} and the first reactive flush (e.g. when an
+uploaded Science Cloud file or report is applied), and the first run is then needed to process
+that change. Reset observers need no guard, since the seeded event is already cleared. The
+check is made by \code{\link{SkipSeededRun}}, which generated code calls.
+}
+
