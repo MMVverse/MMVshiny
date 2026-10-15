@@ -228,3 +228,46 @@ test_that("seedable = FALSE leaves generated observers unchanged, seedable = TRU
     expect_no_error(parse(text = code1))
   }
 })
+
+test_that("the snapshot key ignores session- and process-specific listObjects but not plain ones", {
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  key <- function(listObjects) MMVshiny:::StateSnapshotKey(spec, listObjects = listObjects, scriptsToSource = scripts)
+
+  # Objects whose hash differs between sessions/processes: only their names enter the key.
+  input1 <- shiny::MockShinySession$new()$input
+  input2 <- shiny::MockShinySession$new()$input
+  expect_false(identical(digest::digest(input1), digest::digest(input2)))
+  expect_identical(key(list(input = input1, parser = function() 1, env = new.env())),
+                   key(list(input = input2, parser = NULL, env = list())))
+  expect_identical(key(list(input = input1)), key(list(input = list())))
+  setClass("MMVshinyKeyTestS4", representation(x = "numeric"))
+  expect_identical(key(list(obj = new("MMVshinyKeyTestS4", x = 1))), key(list(obj = NULL)))
+  removeClass("MMVshinyKeyTestS4")
+
+  # Names still matter, and so do plain values (also nested in lists and data frames).
+  expect_false(identical(key(list(input = input1)), key(list(other = input1))))
+  expect_false(identical(key(list(prefixGuiId = "")), key(list(prefixGuiId = "a_"))))
+  expect_false(identical(key(list(x = list(a = 1))), key(list(x = list(a = 2)))))
+  expect_false(identical(key(list(df = data.frame(a = 1))), key(list(df = data.frame(a = 2)))))
+  expect_identical(key(list(prefixGuiId = "")), key(list(prefixGuiId = "")))
+
+  # A snapshot built with surrogates is found by InitState(seed = TRUE) with the live objects.
+  ClearStateSnapshotCache()
+  s1 <- BuildStateSnapshot(spec, listObjects = list(input = list()), scriptsToSource = scripts)
+  expect_s3_class(s1, "MMVshinyStateSnapshot")
+  session <- shiny::MockShinySession$new()
+  state <- shiny::withReactiveDomain(session, InitState(spec, stateId = "keyTest",
+                                                        listObjects = list(input = input1),
+                                                        scriptsToSource = scripts, seed = TRUE))
+  expect_true(state$seeded)
+  expect_length(ls(MMVshiny:::snapshotCache), 1L)
+})
+
+test_that("IsPlainData classifies values", {
+  expect_true(all(vapply(list(NULL, 1, "a", c(a = 1), factor("a"), list(1, list("a")), data.frame(a = 1)),
+                         MMVshiny:::IsPlainData, logical(1))))
+  expect_false(any(vapply(list(sum, new.env(), quote(x), shiny::reactiveValues(a = 1), list(1, new.env()),
+                               structure(list(1), class = "foo")),
+                          MMVshiny:::IsPlainData, logical(1))))
+})

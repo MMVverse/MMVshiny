@@ -125,11 +125,37 @@ SeedState <- function(state, snapshot) {
   invisible(state)
 }
 
-# Cache key: spec, contents of the scripts, names and plain values of listObjects, and the
-# versions of the packages the state computation depends on.
+# TRUE for plain data: NULL, atomic vectors, and (data) frames/lists of those. FALSE for anything
+# tied to a session or process (functions, environments, S4 objects such as Java references,
+# external pointers, classed non-data lists such as shiny's reactivevalues), whose hash would change
+# with every session/process.
+IsPlainData <- function(x) {
+  if(is.null(x)) {
+    return(TRUE)
+  }
+  if(is.function(x) || is.environment(x) || isS4(x) || typeof(x) %in% c("externalptr", "weakref", "language", "symbol")) {
+    return(FALSE)
+  }
+  if(is.atomic(x)) {
+    return(TRUE)
+  }
+  if(is.list(x)) {
+    if(!is.null(attr(x, "class")) && !inherits(x, "data.frame")) {
+      return(FALSE)
+    }
+    return(all(vapply(x, IsPlainData, logical(1))))
+  }
+  FALSE
+}
+
+# Cache key: spec, contents of the scripts, names of listObjects and the values of its plain-data
+# non-empty elements only (empty ones - e.g. NULL or list(), usable as surrogates at build time - carry
+# no data; the other elements - e.g. input, a Java parser - are supplied live to every state
+# by InitState(), with values right for the new session/process, and never stored in a snapshot),
+# and the versions of the packages the state computation depends on.
 StateSnapshotKey <- function(spec, listObjects = NULL, scriptsToSource = NULL, keyExtra = NULL) {
   scriptText <- lapply(scriptsToSource, function(f) if(file.exists(f)) readLines(f, warn = FALSE) else NA_character_)
-  plainObjects <- Filter(function(x) !is.function(x) && !is.environment(x), listObjects)
+  plainObjects <- Filter(function(x) IsPlainData(x) && length(x) > 0, listObjects)
   pkgs <- c("MMVshiny", "shiny", "SafeShiny")
   pkgVersions <- vapply(pkgs, function(p) {
     tryCatch(as.character(utils::packageVersion(p)), error = function(e) NA_character_)
@@ -145,7 +171,10 @@ StateSnapshotKey <- function(spec, listObjects = NULL, scriptsToSource = NULL, k
 #' observers by their dependencies), and checks that the settled state is a fixed point,
 #' i.e. flushing again changes nothing and no input has a pending event. The snapshot is
 #' stored in a process-wide cache under a key made of the spec, the contents of the scripts,
-#' the names and plain values of \code{listObjects} and the versions of MMVshiny, shiny and
+#' the names of \code{listObjects}, the values of those of its elements that are plain data (NULL,
+#' atomic vectors, lists and data frames of those, if non-empty - not functions, environments, S4 objects,
+#' external pointers or reactivevalues, which differ between sessions and processes and are
+#' supplied live to every state by \code{InitState}) and the versions of MMVshiny, shiny and
 #' SafeShiny. If a snapshot with that key already exists it is returned without a rebuild.
 #'
 #' Call this once at process start (e.g. at the top level of \code{app.R}) to move the cost

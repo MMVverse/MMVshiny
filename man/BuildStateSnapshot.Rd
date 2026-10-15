@@ -35,7 +35,10 @@ lets all its observers settle (the Shiny reactive graph orders the default, rese
 observers by their dependencies), and checks that the settled state is a fixed point,
 i.e. flushing again changes nothing and no input has a pending event. The snapshot is
 stored in a process-wide cache under a key made of the spec, the contents of the scripts,
-the names and plain values of \code{listObjects} and the versions of MMVshiny, shiny and
+the names of \code{listObjects}, the values of those of its elements that are plain data (NULL,
+atomic vectors, lists and data frames of those, if non-empty - not functions, environments, S4 objects,
+external pointers or reactivevalues, which differ between sessions and processes and are
+supplied live to every state by \code{InitState}) and the versions of MMVshiny, shiny and
 SafeShiny. If a snapshot with that key already exists it is returned without a rebuild.
 }
 \details{
