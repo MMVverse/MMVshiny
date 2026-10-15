@@ -271,3 +271,120 @@ test_that("IsPlainData classifies values", {
                                structure(list(1), class = "foo")),
                           MMVshiny:::IsPlainData, logical(1))))
 })
+
+test_that("snapshots are stored on disk and loaded by a fresh process (empty memory cache)", {
+  dir <- file.path(tempdir(), "diskCacheTest")
+  old <- options(MMVshiny.snapshotCacheDir = dir)
+  on.exit(options(old))
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  expect_length(list.files(dir, pattern = "\\.rds$"), 0L)
+
+  s1 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  files <- list.files(dir, pattern = "^snapshot_.*\\.rds$", full.names = TRUE)
+  expect_length(files, 1L)
+  expect_length(list.files(dir, pattern = "\\.tmp$"), 0L)
+
+  # New "process": memory cache empty, the disk file is used. Tag the file to prove that the
+  # returned snapshot was read from it rather than rebuilt.
+  ClearStateSnapshotCache(disk = FALSE)
+  expect_length(ls(MMVshiny:::snapshotCache), 0L)
+  tagged <- s1
+  tagged$validated$A <- 99
+  saveRDS(tagged, files)
+  s2 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_equal(as.numeric(s2$validated$A), 99)
+  expect_length(ls(MMVshiny:::snapshotCache), 1L)
+
+  # An unmodified file round-trips to an identical snapshot and seeds states like a live build.
+  saveRDS(s1, files)
+  ClearStateSnapshotCache(disk = FALSE)
+  s3 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_identical(s3, s1)
+  session <- shiny::MockShinySession$new()
+  state <- shiny::withReactiveDomain(session, InitState(spec, stateId = "diskTest",
+                                                        scriptsToSource = scripts, seed = TRUE))
+  expect_true(state$seeded)
+
+  # A changed spec (a new deployment) selects another file; the old one stays until it ages out.
+  spec2 <- data.table::copy(spec)
+  spec2[ID == "A", `:=`(VALEXPR = "9", ExprVAL = "9")]
+  s4 <- BuildStateSnapshot(spec2, scriptsToSource = scripts)
+  expect_equal(as.numeric(s4$validated$A), 9)
+  expect_length(list.files(dir, pattern = "\\.rds$"), 2L)
+
+  # Clearing removes the files too.
+  ClearStateSnapshotCache()
+  expect_length(list.files(dir, pattern = "\\.rds$"), 0L)
+})
+
+test_that("a corrupt or foreign cache file is ignored and replaced", {
+  dir <- file.path(tempdir(), "diskCacheCorrupt")
+  old <- options(MMVshiny.snapshotCacheDir = dir)
+  on.exit(options(old))
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  s1 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  file <- list.files(dir, pattern = "\\.rds$", full.names = TRUE)
+
+  for(bad in list("not an rds file", list(validated = 1))) {
+    ClearStateSnapshotCache(disk = FALSE)
+    if(is.character(bad)) writeLines(bad, file) else saveRDS(bad, file)
+    expect_no_warning(s2 <- BuildStateSnapshot(spec, scriptsToSource = scripts))
+    expect_identical(s2, s1)
+    expect_s3_class(readRDS(file), "MMVshinyStateSnapshot")
+  }
+})
+
+test_that("the disk cache can be disabled, and an unwritable directory is harmless", {
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  dir <- file.path(tempdir(), "diskCacheOff")
+  old <- options(MMVshiny.snapshotCacheDir = FALSE)
+  on.exit(options(old))
+  expect_null(MMVshiny:::SnapshotCacheDir())
+  wd <- file.path(tempdir(), "diskCacheApp")
+  dir.create(wd, showWarnings = FALSE)
+  owd <- setwd(wd)
+  on.exit(setwd(owd), add = TRUE)
+  ClearStateSnapshotCache()
+  expect_s3_class(BuildStateSnapshot(spec, scriptsToSource = scripts), "MMVshinyStateSnapshot")
+  expect_length(list.files(wd, all.files = TRUE, no.. = TRUE), 0L)
+
+  # Unset: the default is a folder in the app's home (working) directory, with its own .gitignore.
+  options(MMVshiny.snapshotCacheDir = NULL)
+  expect_equal(normalizePath(MMVshiny:::SnapshotCacheDir()), normalizePath(file.path(wd, ".MMVshiny-cache"), mustWork = FALSE))
+  ClearStateSnapshotCache()
+  BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_length(list.files(file.path(wd, ".MMVshiny-cache"), pattern = "^snapshot_.*\\.rds$"), 1L)
+  expect_equal(readLines(file.path(wd, ".MMVshiny-cache", ".gitignore")), "*")
+  options(MMVshiny.snapshotCacheDir = FALSE)
+
+  # The "directory" is a regular file: nothing can be written, the build still succeeds.
+  blocker <- tempfile("blocker")
+  writeLines("x", blocker)
+  options(MMVshiny.snapshotCacheDir = file.path(blocker, "sub"))
+  ClearStateSnapshotCache()
+  expect_no_error(s <- BuildStateSnapshot(spec, scriptsToSource = scripts))
+  expect_s3_class(s, "MMVshinyStateSnapshot")
+})
+
+test_that("files not used for MMVshiny.snapshotMaxAgeDays days are pruned when a snapshot is written", {
+  dir <- file.path(tempdir(), "diskCachePrune")
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  old <- options(MMVshiny.snapshotCacheDir = dir)
+  on.exit(options(old))
+  stale <- file.path(dir, "snapshot_stale.rds")
+  recent <- file.path(dir, "snapshot_recent.rds")
+  other <- file.path(dir, "other.txt")
+  for(f in c(stale, recent, other)) writeLines("x", f)
+  Sys.setFileTime(c(stale, other), Sys.time() - 40 * 24 * 3600)
+  spec <- make_chain_spec()
+  ClearStateSnapshotCache(disk = FALSE)
+  BuildStateSnapshot(spec, scriptsToSource = make_state_scripts(spec))
+  expect_false(file.exists(stale))
+  expect_true(file.exists(recent))
+  expect_true(file.exists(other))  # only snapshot files are touched
+})

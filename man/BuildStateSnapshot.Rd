@@ -42,6 +42,17 @@ supplied live to every state by \code{InitState}) and the versions of MMVshiny, 
 SafeShiny. If a snapshot with that key already exists it is returned without a rebuild.
 }
 \details{
+Snapshots are also stored on disk, one RDS file per key, so that a new R process (restart of a
+Shiny Server app process or of the server) loads the snapshot instead of rebuilding it; a
+deployment that changes the spec, scripts, \code{listObjects} values or package versions
+changes the key and so builds a new snapshot. The directory is the option
+\code{MMVshiny.snapshotCacheDir}; by default a folder \code{.MMVshiny-cache} in the working
+directory, which Shiny sets to the deployed app's home folder, so every deployed copy of an app
+has its own cache and a new deployment starts with an empty one (the folder contains a
+\code{.gitignore} ignoring its content). Set the option to \code{FALSE} to disable the disk
+cache. Files unused for \code{getOption("MMVshiny.snapshotMaxAgeDays", 30)} days are removed
+when a snapshot is written. Corrupt files and unwritable directories are ignored.
+
 Call this once at process start (e.g. at the top level of \code{app.R}) to move the cost
 out of the first session; \code{InitState(seed = TRUE)} calls it lazily otherwise.
 }

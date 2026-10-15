@@ -135,7 +135,8 @@ NextStateId <- function() {
 #' process by \code{\link{BuildStateSnapshot}} for the same \code{spec}, \code{listObjects} and
 #' \code{scriptsToSource}, is written into the state before \code{scriptsToSource} are sourced, and
 #' \code{state$seeded} is set to \code{TRUE}. If no snapshot can be built, the state is
-#' initialised the live way.
+#' initialised the live way. The snapshot is also cached on disk, so it survives restarts of the
+#' R process - see \code{\link{BuildStateSnapshot}}.
 #'
 #' The default, min and max observers must be generated with
 #' \code{\link{GenerateScriptCreatingObservers}(seedable = TRUE)}. In a seeded state each of them
