@@ -228,3 +228,188 @@ test_that("seedable = FALSE leaves generated observers unchanged, seedable = TRU
     expect_no_error(parse(text = code1))
   }
 })
+
+test_that("the snapshot key ignores session- and process-specific listObjects but not plain ones", {
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  key <- function(listObjects) MMVshiny:::StateSnapshotKey(spec, listObjects = listObjects, scriptsToSource = scripts)
+
+  # Objects whose hash differs between sessions/processes: only their names enter the key.
+  input1 <- shiny::MockShinySession$new()$input
+  input2 <- shiny::MockShinySession$new()$input
+  expect_false(identical(digest::digest(input1), digest::digest(input2)))
+  expect_identical(key(list(input = input1, parser = function() 1, env = new.env())),
+                   key(list(input = input2, parser = NULL, env = list())))
+  expect_identical(key(list(input = input1)), key(list(input = list())))
+  setClass("MMVshinyKeyTestS4", representation(x = "numeric"))
+  expect_identical(key(list(obj = new("MMVshinyKeyTestS4", x = 1))), key(list(obj = NULL)))
+  removeClass("MMVshinyKeyTestS4")
+
+  # Names still matter, and so do plain values (also nested in lists and data frames).
+  expect_false(identical(key(list(input = input1)), key(list(other = input1))))
+  expect_false(identical(key(list(prefixGuiId = "")), key(list(prefixGuiId = "a_"))))
+  expect_false(identical(key(list(x = list(a = 1))), key(list(x = list(a = 2)))))
+  expect_false(identical(key(list(df = data.frame(a = 1))), key(list(df = data.frame(a = 2)))))
+  expect_identical(key(list(prefixGuiId = "")), key(list(prefixGuiId = "")))
+
+  # A snapshot built with surrogates is found by InitState(seed = TRUE) with the live objects.
+  ClearStateSnapshotCache()
+  s1 <- BuildStateSnapshot(spec, listObjects = list(input = list()), scriptsToSource = scripts)
+  expect_s3_class(s1, "MMVshinyStateSnapshot")
+  session <- shiny::MockShinySession$new()
+  state <- shiny::withReactiveDomain(session, InitState(spec, stateId = "keyTest",
+                                                        listObjects = list(input = input1),
+                                                        scriptsToSource = scripts, seed = TRUE))
+  expect_true(state$seeded)
+  expect_length(ls(MMVshiny:::snapshotCache), 1L)
+})
+
+test_that("IsPlainData classifies values", {
+  expect_true(all(vapply(list(NULL, 1, "a", c(a = 1), factor("a"), list(1, list("a")), data.frame(a = 1)),
+                         MMVshiny:::IsPlainData, logical(1))))
+  expect_false(any(vapply(list(sum, new.env(), quote(x), shiny::reactiveValues(a = 1), list(1, new.env()),
+                               structure(list(1), class = "foo")),
+                          MMVshiny:::IsPlainData, logical(1))))
+})
+
+test_that("snapshots are stored on disk and loaded by a fresh process (empty memory cache)", {
+  dir <- file.path(tempdir(), "diskCacheTest")
+  old <- options(MMVshiny.snapshotCacheDir = dir)
+  on.exit(options(old))
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  expect_length(list.files(dir, pattern = "\\.rds$"), 0L)
+
+  s1 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  files <- list.files(dir, pattern = "^snapshot_.*\\.rds$", full.names = TRUE)
+  expect_length(files, 1L)
+  expect_length(list.files(dir, pattern = "\\.tmp$"), 0L)
+
+  # New "process": memory cache empty, the disk file is used. Tag the file to prove that the
+  # returned snapshot was read from it rather than rebuilt.
+  ClearStateSnapshotCache(disk = FALSE)
+  expect_length(ls(MMVshiny:::snapshotCache), 0L)
+  tagged <- s1
+  tagged$validated$A <- 99
+  saveRDS(tagged, files)
+  s2 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_equal(as.numeric(s2$validated$A), 99)
+  expect_length(ls(MMVshiny:::snapshotCache), 1L)
+
+  # An unmodified file round-trips to an identical snapshot and seeds states like a live build.
+  saveRDS(s1, files)
+  ClearStateSnapshotCache(disk = FALSE)
+  s3 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_identical(s3, s1)
+  session <- shiny::MockShinySession$new()
+  state <- shiny::withReactiveDomain(session, InitState(spec, stateId = "diskTest",
+                                                        scriptsToSource = scripts, seed = TRUE))
+  expect_true(state$seeded)
+
+  # A changed spec (a new deployment) selects another file; the old one stays until it ages out.
+  spec2 <- data.table::copy(spec)
+  spec2[ID == "A", `:=`(VALEXPR = "9", ExprVAL = "9")]
+  s4 <- BuildStateSnapshot(spec2, scriptsToSource = scripts)
+  expect_equal(as.numeric(s4$validated$A), 9)
+  expect_length(list.files(dir, pattern = "\\.rds$"), 2L)
+
+  # Clearing removes the files too.
+  ClearStateSnapshotCache()
+  expect_length(list.files(dir, pattern = "\\.rds$"), 0L)
+})
+
+test_that("a corrupt or foreign cache file is ignored and replaced", {
+  dir <- file.path(tempdir(), "diskCacheCorrupt")
+  old <- options(MMVshiny.snapshotCacheDir = dir)
+  on.exit(options(old))
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  s1 <- BuildStateSnapshot(spec, scriptsToSource = scripts)
+  file <- list.files(dir, pattern = "\\.rds$", full.names = TRUE)
+
+  for(bad in list("not an rds file", list(validated = 1))) {
+    ClearStateSnapshotCache(disk = FALSE)
+    if(is.character(bad)) writeLines(bad, file) else saveRDS(bad, file)
+    expect_no_warning(s2 <- BuildStateSnapshot(spec, scriptsToSource = scripts))
+    expect_identical(s2, s1)
+    expect_s3_class(readRDS(file), "MMVshinyStateSnapshot")
+  }
+})
+
+test_that("the disk cache can be disabled, and an unwritable directory is harmless", {
+  spec <- make_chain_spec()
+  scripts <- make_state_scripts(spec)
+  dir <- file.path(tempdir(), "diskCacheOff")
+  old <- options(MMVshiny.snapshotCacheDir = FALSE)
+  on.exit(options(old))
+  expect_null(MMVshiny:::SnapshotCacheDir())
+  wd <- file.path(tempdir(), "diskCacheApp")
+  dir.create(wd, showWarnings = FALSE)
+  owd <- setwd(wd)
+  on.exit(setwd(owd), add = TRUE)
+  ClearStateSnapshotCache()
+  expect_s3_class(BuildStateSnapshot(spec, scriptsToSource = scripts), "MMVshinyStateSnapshot")
+  expect_length(list.files(wd, all.files = TRUE, no.. = TRUE), 0L)
+
+  # Unset: the default is a folder in the app's home (working) directory, with its own .gitignore.
+  options(MMVshiny.snapshotCacheDir = NULL)
+  expect_equal(normalizePath(MMVshiny:::SnapshotCacheDir(), mustWork = FALSE), normalizePath(file.path(wd, ".MMVshiny-cache"), mustWork = FALSE))
+  ClearStateSnapshotCache()
+  BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_length(list.files(file.path(wd, ".MMVshiny-cache"), pattern = "^snapshot_.*\\.rds$"), 1L)
+  expect_equal(readLines(file.path(wd, ".MMVshiny-cache", ".gitignore")), "*")
+  options(MMVshiny.snapshotCacheDir = FALSE)
+
+  # The "directory" is a regular file: nothing can be written, the build still succeeds.
+  blocker <- tempfile("blocker")
+  writeLines("x", blocker)
+  options(MMVshiny.snapshotCacheDir = file.path(blocker, "sub"))
+  ClearStateSnapshotCache()
+  expect_no_error(s <- BuildStateSnapshot(spec, scriptsToSource = scripts))
+  expect_s3_class(s, "MMVshinyStateSnapshot")
+})
+
+test_that("files not used for MMVshiny.snapshotMaxAgeDays days are pruned when a snapshot is written", {
+  dir <- file.path(tempdir(), "diskCachePrune")
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  old <- options(MMVshiny.snapshotCacheDir = dir)
+  on.exit(options(old))
+  stale <- file.path(dir, "snapshot_stale.rds")
+  recent <- file.path(dir, "snapshot_recent.rds")
+  other <- file.path(dir, "other.txt")
+  for(f in c(stale, recent, other)) writeLines("x", f)
+  Sys.setFileTime(c(stale, other), Sys.time() - 40 * 24 * 3600)
+  spec <- make_chain_spec()
+  ClearStateSnapshotCache(disk = FALSE)
+  BuildStateSnapshot(spec, scriptsToSource = make_state_scripts(spec))
+  expect_false(file.exists(stale))
+  expect_true(file.exists(recent))
+  expect_true(file.exists(other))  # only snapshot files are touched
+})
+
+test_that("the snapshot key does not depend on the row order of the spec", {
+  # InitState() sorts and keys its (copy of the) spec before calling BuildStateSnapshot() for
+  # seed = TRUE, so a spec not sorted by ID must give the same key as when sorted (e.g. the key
+  # computed at app startup vs. in a session).
+  spec <- make_chain_spec()
+  spec <- spec[c(5, 3, 1, 6, 2, 4)]  # not sorted by ID
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  keyBefore <- MMVshiny:::StateSnapshotKey(spec, scriptsToSource = scripts)
+  BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_identical(MMVshiny:::StateSnapshotKey(spec, scriptsToSource = scripts), keyBefore)
+  sorted <- data.table::copy(spec)
+  data.table::setkey(sorted, ID)
+  expect_identical(MMVshiny:::StateSnapshotKey(sorted, scriptsToSource = scripts), keyBefore)
+  spec2 <- data.table::copy(spec)
+  spec2[ID == "A", `:=`(VALEXPR = "9", ExprVAL = "9")]
+  expect_false(identical(MMVshiny:::StateSnapshotKey(spec2, scriptsToSource = scripts), keyBefore))
+
+  session <- shiny::MockShinySession$new()
+  state <- shiny::withReactiveDomain(session, InitState(spec, stateId = "keyedSpec",
+                                                        scriptsToSource = scripts, seed = TRUE))
+  expect_true(state$seeded)
+  expect_length(ls(MMVshiny:::snapshotCache), 1L)
+})

@@ -4,7 +4,10 @@
 \alias{ClearStateSnapshotCache}
 \title{Remove all cached state snapshots}
 \usage{
-ClearStateSnapshotCache()
+ClearStateSnapshotCache(disk = TRUE)
+}
+\arguments{
+\item{disk}{logical; also delete the snapshot files of the on-disk cache (default \code{TRUE}).}
 }
 \value{
 nothing - called for its side effect.

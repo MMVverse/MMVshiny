@@ -125,17 +125,127 @@ SeedState <- function(state, snapshot) {
   invisible(state)
 }
 
-# Cache key: spec, contents of the scripts, names and plain values of listObjects, and the
-# versions of the packages the state computation depends on.
+# TRUE for plain data: NULL, atomic vectors, and (data) frames/lists of those. FALSE for anything
+# tied to a session or process (functions, environments, S4 objects such as Java references,
+# external pointers, classed non-data lists such as shiny's reactivevalues), whose hash would change
+# with every session/process.
+IsPlainData <- function(x) {
+  if(is.null(x)) {
+    return(TRUE)
+  }
+  if(is.function(x) || is.environment(x) || isS4(x) || typeof(x) %in% c("externalptr", "weakref", "language", "symbol")) {
+    return(FALSE)
+  }
+  if(is.atomic(x)) {
+    return(TRUE)
+  }
+  if(is.list(x)) {
+    if(!is.null(attr(x, "class")) && !inherits(x, "data.frame")) {
+      return(FALSE)
+    }
+    return(all(vapply(x, IsPlainData, logical(1))))
+  }
+  FALSE
+}
+
+# The spec as it enters the cache key: sorted by ID with data.table's key attribute dropped.
+# InitState() sorts and keys (a copy of) the spec, so the spec which a session passes to
+# InitState(seed = TRUE) arrives sorted, whereas the one given to BuildStateSnapshot() at startup
+# may not be: the key must not depend on the row order.
+CanonicalSpecForKey <- function(spec) {
+  spec <- data.table::as.data.table(spec)
+  df <- as.data.frame(spec[order(spec$ID), ])
+  attr(df, "sorted") <- NULL
+  attr(df, ".internal.selfref") <- NULL
+  df
+}
+
+# Cache key: spec, contents of the scripts, names of listObjects and the values of its plain-data
+# non-empty elements only (empty ones - e.g. NULL or list(), usable as surrogates at build time - carry
+# no data; the other elements - e.g. input, a Java parser - are supplied live to every state
+# by InitState(), with values right for the new session/process, and never stored in a snapshot),
+# and the versions of the packages the state computation depends on.
 StateSnapshotKey <- function(spec, listObjects = NULL, scriptsToSource = NULL, keyExtra = NULL) {
   scriptText <- lapply(scriptsToSource, function(f) if(file.exists(f)) readLines(f, warn = FALSE) else NA_character_)
-  plainObjects <- Filter(function(x) !is.function(x) && !is.environment(x), listObjects)
+  plainObjects <- Filter(function(x) IsPlainData(x) && length(x) > 0, listObjects)
   pkgs <- c("MMVshiny", "shiny", "SafeShiny")
   pkgVersions <- vapply(pkgs, function(p) {
     tryCatch(as.character(utils::packageVersion(p)), error = function(e) NA_character_)
   }, character(1))
-  digest::digest(list(as.data.frame(spec), scriptText, names(listObjects), plainObjects,
+  digest::digest(list(CanonicalSpecForKey(spec), scriptText, names(listObjects), plainObjects,
                       pkgVersions, keyExtra))
+}
+
+# On-disk cache ----
+# Snapshots are also kept as RDS files, so that a new R process (app-process restart, server
+# reboot, idle respawn) loads the snapshot instead of rebuilding it. The folder belongs to the
+# deployed app (see SnapshotCacheDir), so deploying a new version of the app starts with an empty
+# cache; within a folder the file name is the cache key, so a changed spec, script, listObjects
+# value or package version selects another file, and files not used for
+# MMVshiny.snapshotMaxAgeDays days (default 30) are removed when a snapshot is written.
+
+# Directory of the on-disk cache, or NULL if disabled. Option MMVshiny.snapshotCacheDir: a path,
+# or FALSE (or "") to disable; unset: a folder ".MMVshiny-cache" in the app's home folder, i.e. the
+# working directory, which Shiny sets to the app directory (the same place the apps write their
+# generated files to, so writable by the user running the app).
+SnapshotCacheDir <- function() {
+  dir <- getOption("MMVshiny.snapshotCacheDir", file.path(getwd(), ".MMVshiny-cache"))
+  if(is.null(dir) || isFALSE(dir) || !is.character(dir) || length(dir) != 1L || is.na(dir) || !nzchar(dir)) {
+    return(NULL)
+  }
+  dir
+}
+
+SnapshotCacheFile <- function(dir, key) {
+  file.path(dir, paste0("snapshot_", key, ".rds"))
+}
+
+# The snapshot stored under key, or NULL if there is none or the file is unreadable/invalid.
+ReadSnapshotFromDisk <- function(key) {
+  dir <- SnapshotCacheDir()
+  if(is.null(dir)) {
+    return(NULL)
+  }
+  file <- SnapshotCacheFile(dir, key)
+  if(!file.exists(file)) {
+    return(NULL)
+  }
+  snapshot <- tryCatch(readRDS(file), error = function(e) NULL)
+  if(!inherits(snapshot, "MMVshinyStateSnapshot") || !is.list(snapshot)) {
+    try(unlink(file), silent = TRUE)
+    return(NULL)
+  }
+  try(Sys.setFileTime(file, Sys.time()), silent = TRUE)  # keep files in use from being pruned
+  snapshot
+}
+
+# Store the snapshot under key; never fails (a cache that cannot be written is simply not used).
+WriteSnapshotToDisk <- function(key, snapshot) {
+  dir <- SnapshotCacheDir()
+  if(is.null(dir)) {
+    return(invisible(FALSE))
+  }
+  ok <- tryCatch({
+    dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+    # Self-ignoring folder (like renv's): apps need no .gitignore entry for it.
+    if(!file.exists(file.path(dir, ".gitignore"))) writeLines("*", file.path(dir, ".gitignore"))
+    tmp <- tempfile("snapshot_", tmpdir = dir, fileext = ".tmp")
+    on.exit(unlink(tmp), add = TRUE)
+    saveRDS(snapshot, tmp)
+    file.rename(tmp, SnapshotCacheFile(dir, key))  # atomic: concurrent processes never see a partial file
+  }, error = function(e) FALSE, warning = function(w) FALSE)
+  PruneSnapshotCacheDir(dir)
+  invisible(isTRUE(ok))
+}
+
+PruneSnapshotCacheDir <- function(dir) {
+  maxAgeDays <- getOption("MMVshiny.snapshotMaxAgeDays", 30)
+  try({
+    files <- list.files(dir, pattern = "^snapshot_.*\\.(rds|tmp)$", full.names = TRUE)
+    age <- as.numeric(difftime(Sys.time(), file.mtime(files), units = "days"))
+    unlink(files[!is.na(age) & age > ifelse(grepl("\\.tmp$", files), 1, maxAgeDays)])
+  }, silent = TRUE)
+  invisible(NULL)
 }
 
 #' Build, cache and return the snapshot of the initialised state for a specification
@@ -145,8 +255,22 @@ StateSnapshotKey <- function(spec, listObjects = NULL, scriptsToSource = NULL, k
 #' observers by their dependencies), and checks that the settled state is a fixed point,
 #' i.e. flushing again changes nothing and no input has a pending event. The snapshot is
 #' stored in a process-wide cache under a key made of the spec, the contents of the scripts,
-#' the names and plain values of \code{listObjects} and the versions of MMVshiny, shiny and
+#' the names of \code{listObjects}, the values of those of its elements that are plain data (NULL,
+#' atomic vectors, lists and data frames of those, if non-empty - not functions, environments, S4 objects,
+#' external pointers or reactivevalues, which differ between sessions and processes and are
+#' supplied live to every state by \code{InitState}) and the versions of MMVshiny, shiny and
 #' SafeShiny. If a snapshot with that key already exists it is returned without a rebuild.
+#'
+#' Snapshots are also stored on disk, one RDS file per key, so that a new R process (restart of a
+#' Shiny Server app process or of the server) loads the snapshot instead of rebuilding it; a
+#' deployment that changes the spec, scripts, \code{listObjects} values or package versions
+#' changes the key and so builds a new snapshot. The directory is the option
+#' \code{MMVshiny.snapshotCacheDir}; by default a folder \code{.MMVshiny-cache} in the working
+#' directory, which Shiny sets to the deployed app's home folder, so every deployed copy of an app
+#' has its own cache and a new deployment starts with an empty one (the folder contains a
+#' \code{.gitignore} ignoring its content). Set the option to \code{FALSE} to disable the disk
+#' cache. Files unused for \code{getOption("MMVshiny.snapshotMaxAgeDays", 30)} days are removed
+#' when a snapshot is written. Corrupt files and unwritable directories are ignored.
 #'
 #' Call this once at process start (e.g. at the top level of \code{app.R}) to move the cost
 #' out of the first session; \code{InitState(seed = TRUE)} calls it lazily otherwise.
@@ -170,6 +294,11 @@ BuildStateSnapshot <- function(spec, listObjects = NULL, scriptsToSource = NULL,
   key <- StateSnapshotKey(spec, listObjects, scriptsToSource, keyExtra)
   if(!is.null(snapshotCache[[key]])) {
     return(snapshotCache[[key]])
+  }
+  fromDisk <- ReadSnapshotFromDisk(key)
+  if(!is.null(fromDisk)) {
+    snapshotCache[[key]] <- fromDisk
+    return(fromDisk)
   }
 
   snapshot <- tryCatch({
@@ -208,16 +337,22 @@ BuildStateSnapshot <- function(spec, listObjects = NULL, scriptsToSource = NULL,
 
   if(!is.null(snapshot)) {
     snapshotCache[[key]] <- snapshot
+    WriteSnapshotToDisk(key, snapshot)
   }
   snapshot
 }
 
 #' Remove all cached state snapshots
+#' @param disk logical; also delete the snapshot files of the on-disk cache (default \code{TRUE}).
 #' @return nothing - called for its side effect.
 #' @examples
 #' ClearStateSnapshotCache()
 #' @export
-ClearStateSnapshotCache <- function() {
+ClearStateSnapshotCache <- function(disk = TRUE) {
   rm(list = ls(snapshotCache, all.names = TRUE), envir = snapshotCache)
+  dir <- SnapshotCacheDir()
+  if(disk && !is.null(dir) && dir.exists(dir)) {
+    unlink(list.files(dir, pattern = "^snapshot_.*\\.(rds|tmp)$", full.names = TRUE))
+  }
   invisible(NULL)
 }
