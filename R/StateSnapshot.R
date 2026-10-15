@@ -148,6 +148,18 @@ IsPlainData <- function(x) {
   FALSE
 }
 
+# The spec as it enters the cache key: sorted by ID with data.table's key attribute dropped.
+# InitState() sorts and keys (a copy of) the spec, so the spec which a session passes to
+# InitState(seed = TRUE) arrives sorted, whereas the one given to BuildStateSnapshot() at startup
+# may not be: the key must not depend on the row order.
+CanonicalSpecForKey <- function(spec) {
+  spec <- data.table::as.data.table(spec)
+  df <- as.data.frame(spec[order(spec$ID), ])
+  attr(df, "sorted") <- NULL
+  attr(df, ".internal.selfref") <- NULL
+  df
+}
+
 # Cache key: spec, contents of the scripts, names of listObjects and the values of its plain-data
 # non-empty elements only (empty ones - e.g. NULL or list(), usable as surrogates at build time - carry
 # no data; the other elements - e.g. input, a Java parser - are supplied live to every state
@@ -160,7 +172,7 @@ StateSnapshotKey <- function(spec, listObjects = NULL, scriptsToSource = NULL, k
   pkgVersions <- vapply(pkgs, function(p) {
     tryCatch(as.character(utils::packageVersion(p)), error = function(e) NA_character_)
   }, character(1))
-  digest::digest(list(as.data.frame(spec), scriptText, names(listObjects), plainObjects,
+  digest::digest(list(CanonicalSpecForKey(spec), scriptText, names(listObjects), plainObjects,
                       pkgVersions, keyExtra))
 }
 

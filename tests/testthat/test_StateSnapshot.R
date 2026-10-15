@@ -355,7 +355,7 @@ test_that("the disk cache can be disabled, and an unwritable directory is harmle
 
   # Unset: the default is a folder in the app's home (working) directory, with its own .gitignore.
   options(MMVshiny.snapshotCacheDir = NULL)
-  expect_equal(normalizePath(MMVshiny:::SnapshotCacheDir()), normalizePath(file.path(wd, ".MMVshiny-cache"), mustWork = FALSE))
+  expect_equal(normalizePath(MMVshiny:::SnapshotCacheDir(), mustWork = FALSE), normalizePath(file.path(wd, ".MMVshiny-cache"), mustWork = FALSE))
   ClearStateSnapshotCache()
   BuildStateSnapshot(spec, scriptsToSource = scripts)
   expect_length(list.files(file.path(wd, ".MMVshiny-cache"), pattern = "^snapshot_.*\\.rds$"), 1L)
@@ -387,4 +387,29 @@ test_that("files not used for MMVshiny.snapshotMaxAgeDays days are pruned when a
   expect_false(file.exists(stale))
   expect_true(file.exists(recent))
   expect_true(file.exists(other))  # only snapshot files are touched
+})
+
+test_that("the snapshot key does not depend on the row order of the spec", {
+  # InitState() sorts and keys its (copy of the) spec before calling BuildStateSnapshot() for
+  # seed = TRUE, so a spec not sorted by ID must give the same key as when sorted (e.g. the key
+  # computed at app startup vs. in a session).
+  spec <- make_chain_spec()
+  spec <- spec[c(5, 3, 1, 6, 2, 4)]  # not sorted by ID
+  scripts <- make_state_scripts(spec)
+  ClearStateSnapshotCache()
+  keyBefore <- MMVshiny:::StateSnapshotKey(spec, scriptsToSource = scripts)
+  BuildStateSnapshot(spec, scriptsToSource = scripts)
+  expect_identical(MMVshiny:::StateSnapshotKey(spec, scriptsToSource = scripts), keyBefore)
+  sorted <- data.table::copy(spec)
+  data.table::setkey(sorted, ID)
+  expect_identical(MMVshiny:::StateSnapshotKey(sorted, scriptsToSource = scripts), keyBefore)
+  spec2 <- data.table::copy(spec)
+  spec2[ID == "A", `:=`(VALEXPR = "9", ExprVAL = "9")]
+  expect_false(identical(MMVshiny:::StateSnapshotKey(spec2, scriptsToSource = scripts), keyBefore))
+
+  session <- shiny::MockShinySession$new()
+  state <- shiny::withReactiveDomain(session, InitState(spec, stateId = "keyedSpec",
+                                                        scriptsToSource = scripts, seed = TRUE))
+  expect_true(state$seeded)
+  expect_length(ls(MMVshiny:::snapshotCache), 1L)
 })
