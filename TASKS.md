@@ -2,9 +2,48 @@
 
 ## Plan of Action – Open Tasks Prioritization
 
-1. [Issue #2](https://github.com/MMVverse/MMVshiny/issues/2) — Add `"checkbox input"` TYPE
+1. [Issue #22](https://github.com/MMVverse/MMVshiny/issues/22) — Group presentation reactives/observers and delegate colour/status icon to the client
+2. [Issue #4](https://github.com/MMVverse/MMVshiny/issues/4) — Document `compoundActivationTrigger` pattern for per-compound reactives that use `isolate()`
+3. [Issue #3](https://github.com/MMVverse/MMVshiny/issues/3) — `GenerateHandleEventsJS`: add `FLAG_UseStaticBind` for dynamically created inputs
+4. [Issue #1](https://github.com/MMVverse/MMVshiny/issues/1) — Add state-level status (disable report generation for invalid states)
 
 ---
+
+## Persist the state snapshot cache on disk to speed up cold starts [RESOLVED]
+
+[Issue #29](https://github.com/MMVverse/MMVshiny/issues/29) | assignee: venelin | 2026-10-15 | resolved 2026-10-15 in v1.7.0
+
+`BuildStateSnapshot()` cached snapshots only in memory, so every new R process (Shiny Server restart, idle respawn, reboot, redeploy) rebuilt the snapshot at the first session. Snapshots are now persisted as RDS files keyed by the existing cache key, in a cache directory persisted in the deployed app's folder.
+
+## StateSnapshotKey hashes session-specific listObjects, so seed = TRUE never hits the cache [RESOLVED]
+
+[Issue #27](https://github.com/MMVverse/MMVshiny/issues/27) | assignee: venelin | 2026-10-15 | resolved 2026-10-15 in v1.7.0
+
+`StateSnapshotKey()` hashed the values of session-specific `listObjects` elements (`input`, Java refs such as MMVFree's `smilesParser`), so the key differed per session/process. Fixed (v1.6.2): such objects are ignored in the key; the key no longer depends on the row order of the spec (v1.7.0).
+
+## Seeded observers skip first run even when the state changed before the first flush [RESOLVED]
+
+[Issue #24](https://github.com/MMVverse/MMVshiny/issues/24) | 2026-10-11 | resolved 2026-10-13 in v1.6.1
+
+Follow-up to #21: uploading MMV008_Chloroquine.xlsx in MMVSola with seeded states left predicted values N/A and the plot empty, because seeded default/min/max observers used `ignoreInit = TRUE` and skipped a first run that would have seen the post-`InitState()` changes. Fixed: `SkipSeededRun()` skips the first run only if the event value, validated value and source are identical to the snapshot.
+
+## Group presentation reactives/observers and delegate colour/status icon to the client
+
+[Issue #22](https://github.com/MMVverse/MMVshiny/issues/22) | assignee: venelin | 2026-10-11
+
+Per input id MMVshiny creates reset, displayed, default/min/max and count observers plus a status-icon `renderUI`; in the MMVSola startup trace about half of the displayed phase (1.58 s) is wrapper/scheduling overhead. Proposals: (A) group and synchronise presentation on the server (one observer pushing changed ids, one reset loop, lazy SC/report reactive values); (B) send a single `{id: [status, text]}` message and let the client set a CSS class/data attribute for colour, icon and text. Open question: is the client-side variant faster end to end (measure with chromote)? Acceptance: identical GUI state checked by a test; startup/upload/single-edit timings before/after. Related to #21.
+
+## Cache the initialised state object across sessions (seeded initial state) [RESOLVED]
+
+[Issue #21](https://github.com/MMVverse/MMVshiny/issues/21) | assignee: venelin | 2026-10-11 | resolved 2026-10-11 in v1.6.0 (re-landed in v1.6.1, see #24)
+
+MMVSola startup took ~7-8 s, of which the initial reset and default phases were ~3 s plus ~1.6 s in `InitState`, recomputed identically each session. New states are now seeded from a cached snapshot of the initialised state instead of re-running reset/defaults; only reactives/observers are created per session.
+
+## Label generated SafeShiny observers/reactives/icons for readable timing output [RESOLVED]
+
+[Issue #18](https://github.com/MMVverse/MMVshiny/issues/18) | assignee: venelin | 2026-10-08 | resolved 2026-10-08 in v1.4.1
+
+With `useSafeShiny = TRUE`, generated `SafeObserveEvent`/`SafeReactive`/`SafeRenderUI` calls now pass an explicit `label` (e.g. `reset <ID>`, `<ID>`, `<ID> icon`) so SafeShiny's timing tables and `PlotSafeShinyFlame()` are readable.
 
 ## Use SafeShiny::SafeReactive() in generated reactives [RESOLVED]
 
@@ -97,9 +136,33 @@ MMVSola 16.1s → 11.8s (1.37x). Remaining hotspots not covered by this fix: `Cr
 6-call `GetType()` if/else-if chain, and `LoadStateSpecification()`'s pre-`setkey()` per-id loop —
 left for a follow-up issue if warranted.
 
-## Add `"checkbox input"` TYPE for reactive checkboxInput() support
+## State object: roll up per-parameter status to a state-level status, and catch errors in derived reactives [RESOLVED]
 
-[Issue #2](https://github.com/MMVverse/MMVshiny/issues/2) | assignee: venelin | 2026-04-20
+[Issue #9](https://github.com/MMVverse/MMVshiny/issues/9) | assignee: venelin | 2026-09-09 | resolved 2026-10-09 in v1.5.0
+
+Per-parameter status in `state$status[[id]]` had no aggregate answering "is this compound OK overall?" (e.g. MMVSola #121/#123: an ERROR-level parameter crashes report generation). Added `GetStateStatus()`, a state-level roll-up of per-parameter status; error catching in derived reactives was delivered via the SafeShiny integration ([Issue #14](https://github.com/MMVverse/MMVshiny/issues/14), [Issue #16](https://github.com/MMVverse/MMVshiny/issues/16)). Related to [Issue #1](https://github.com/MMVverse/MMVshiny/issues/1).
+
+## Document the countID echo-avoidance rationale (and its selectize limitation) [RESOLVED]
+
+[Issue #6](https://github.com/MMVverse/MMVshiny/issues/6) | assignee: venelin | 2026-09-09 | resolved 2026-09-09 in v1.2.1
+
+The vignette and roxygen docs now explain why the `count<ID>` mechanism works: a server-side `update*Input()` never dispatches the native browser event the counter is bound to, so only genuine user interaction increments it, including the selectize limitation.
+
+## Document compoundActivationTrigger pattern for per-compound reactives that use isolate()
+
+[Issue #4](https://github.com/MMVverse/MMVshiny/issues/4) | assignee: venelin | 2026-04-21
+
+A per-compound reactive in `STATE_Objects.R` that uses `isolate()` to suppress a dependency cannot re-invalidate when its compound becomes active again after a compound switch (MMVSola scenario: `OralDosePredictions` reads checkbox states via `isolate(Get(MYSTATE, id))` to avoid DT flicker, so after a compound switch its cache holds stale checkbox HTML). Document the `compoundActivationTrigger` pattern as the fix.
+
+## GenerateHandleEventsJS: add FLAG_UseStaticBind argument to support event delegation
+
+[Issue #3](https://github.com/MMVverse/MMVshiny/issues/3) | unassigned | 2026-04-21
+
+`GenerateHandleEventsJS` generates direct `$('#id').bind('change', ...)` bindings set up once at page load, which fail silently for inputs inside DataTables (`DT::renderDT`) or other widgets that recreate their DOM on redraw. Add `FLAG_UseStaticBind = TRUE`; when `FALSE`, generate event-delegation code instead.
+
+## Add `"checkbox input"` TYPE for reactive checkboxInput() support [RESOLVED]
+
+[Issue #2](https://github.com/MMVverse/MMVshiny/issues/2) | assignee: venelin | 2026-04-20 | resolved 2026-05-07 in v1.2.0
 
 Add a new `TYPE = "checkbox input"` to MMVshiny so that checkboxes can be declared in
 the parameter spec and managed as first-class reactive inputs.
@@ -117,3 +180,9 @@ to show/hide simulated dose curves). Relates to
 - Generated `CreateReactivesInState.R` logic: wire `"checkbox input"` as a standard
   reactive.
 - Tests: new test case for `TYPE = "checkbox input"`.
+
+## Add state-level status
+
+[Issue #1](https://github.com/MMVverse/MMVshiny/issues/1) | assignee: venelin | 2026-03-17
+
+When an input field is invalid (red status icon), the whole state object should become invalid, e.g. to disable selecting it for report generation. Partly addressed by `GetStateStatus()` ([Issue #9](https://github.com/MMVverse/MMVshiny/issues/9)); the remaining work is using it to gate selection/report generation.
