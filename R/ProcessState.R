@@ -1495,6 +1495,12 @@ GetDisplayed <- function(state, id) {
 # elsewhere, but in this mode no observer should be created for the "displayed" observer type of
 # GenerateScriptCreatingObservers(), or the push happens twice. Set state$synchronousDisplayed <- TRUE
 # to make this the default for all calls on a state.
+# The observer mode (default) is the more generally usable one, at a small overhead. Apps in which
+# several states share the same GUI inputs and one active state controls them at a time (e.g.
+# MMVSola) cannot easily use the synchronous mode: SetDisplayed() is also called on non-active
+# states (e.g. fresh states created while processing an uploaded file), a direct push would
+# overwrite the inputs of the active state, and repainting the inputs when the active state changes
+# is not clearly feasible.
 SetDisplayed <- function(state, id, value, synchronous = isTRUE(state$synchronousDisplayed)) {
   attributes(value) <- NULL
   
