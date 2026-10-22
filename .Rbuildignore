@@ -3,3 +3,5 @@
 ^\.github$
 ^build\.sh$
 ^TASKS\.md$
+^\.positai$
+^\.claude$
