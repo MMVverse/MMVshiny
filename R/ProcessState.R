@@ -614,6 +614,18 @@ ProcessDisplayedChangedEvent <- function(s, id) {
   currentEvent <- s%>%GetEvent(id)
   s%>%SetEvent(id, "DISPLAYED")
   
+  s%>%PushDisplayed(id)
+  
+  # Restore the current event
+  s%>%SetEvent(id, currentEvent)
+}
+
+# Push the displayed value and the colour of an input to the browser (js$backgroundCol(), js$fontCol()
+# and the update*Input() function for the type of id). The colours depend on the source of the
+# value (options MMVshiny.source2FontColour and MMVshiny.source2BackgroundColour).
+# Called from ProcessDisplayedChangedEvent() (observer based) and, if synchronous = TRUE, from
+# SetDisplayed().
+PushDisplayed <- function(s, id) {
   source2FontColour <- getOption("MMVshiny.source2FontColour", 
                                  default = c(`Default value` = "black",
                                              `User input` = "black",
@@ -623,25 +635,29 @@ ProcessDisplayedChangedEvent <- function(s, id) {
                                        default = c(`Default value` = "azure",
                                                    `User input` = "white",
                                                    `Science Cloud` = "ivory"))
-                                       
-  source <- GetSource(s, id)
+  
+  # isolate: PushDisplayed() can be called from SetDisplayed() in any context
+  shiny::isolate({
+    source <- GetSource(s, id)
+    type <- GetType(s, id)
+    displayed <- GetDisplayed(s, id)
+  })
   
   js$backgroundCol(GetGuiId(s, id), unname(source2BackgroundColour[source]))
   js$fontCol(GetGuiId(s, id), unname(source2FontColour[source]))
   
-  if(s%>%GetType(id) == "numeric input") {
-    UpdateNumericInput(inputId = GetGuiId(s, id), value = GetDisplayed(s, id))
-  } else if(s%>%GetType(id) == "text input") {
-    UpdateTextInput(inputId = GetGuiId(s, id), value = GetDisplayed(s, id))
-  } else if(s%>%GetType(id) == "radio input") {
-    UpdateRadioButtons(inputId = GetGuiId(s, id), selected = GetDisplayed(s, id))
-  } else if(s%>%GetType(id) == "select input") {
-    UpdateSelectInput(inputId = GetGuiId(s, id), selected = GetDisplayed(s, id))
-  } else if(s%>%GetType(id) == "checkbox input") {
-    UpdateCheckboxInput(inputId = GetGuiId(s, id), value = isTRUE(GetDisplayed(s, id)))
+  if(type == "numeric input") {
+    UpdateNumericInput(inputId = GetGuiId(s, id), value = displayed)
+  } else if(type == "text input") {
+    UpdateTextInput(inputId = GetGuiId(s, id), value = displayed)
+  } else if(type == "radio input") {
+    UpdateRadioButtons(inputId = GetGuiId(s, id), selected = displayed)
+  } else if(type == "select input") {
+    UpdateSelectInput(inputId = GetGuiId(s, id), selected = displayed)
+  } else if(type == "checkbox input") {
+    UpdateCheckboxInput(inputId = GetGuiId(s, id), value = isTRUE(displayed))
   }
-  # Restore the current event
-  s%>%SetEvent(id, currentEvent)
+  invisible(NULL)
 }
 
 
@@ -1473,7 +1489,19 @@ GetDisplayed <- function(state, id) {
   state$displayed[[id]]
 }
 
-SetDisplayed <- function(state, id, value) {
+# synchronous: if TRUE, the displayed value and its colour are pushed to the browser right here
+# (PushDisplayed()), instead of by an observer of the displayed and source reactive values
+# (ProcessDisplayedChangedEvent()). state$displayed is still written, since GetDisplayed() is read
+# elsewhere, but in this mode no observer should be created for the "displayed" observer type of
+# GenerateScriptCreatingObservers(), or the push happens twice. Set state$synchronousDisplayed <- TRUE
+# to make this the default for all calls on a state.
+# The observer mode (default) is the more generally usable one, at a small overhead. Apps in which
+# several states share the same GUI inputs and one active state controls them at a time (e.g.
+# MMVSola) cannot easily use the synchronous mode: SetDisplayed() is also called on non-active
+# states (e.g. fresh states created while processing an uploaded file), a direct push would
+# overwrite the inputs of the active state, and repainting the inputs when the active state changes
+# is not clearly feasible.
+SetDisplayed <- function(state, id, value, synchronous = isTRUE(state$synchronousDisplayed)) {
   attributes(value) <- NULL
   
   if(state%>%GetType(id) == "numeric input") {
@@ -1486,6 +1514,10 @@ SetDisplayed <- function(state, id, value) {
     state$displayed[[id]] <- value
   } else {
     stop("SetDisplayed: id=",id," is not a numeric input, text input, radio input, select input, or checkbox input.")
+  }
+  
+  if(isTRUE(synchronous)) {
+    state%>%PushDisplayed(id)
   }
 }
 
