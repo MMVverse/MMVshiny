@@ -9,9 +9,9 @@
 
 ---
 
-## Radio input needs two clicks: JS handler binds click instead of change
+## Radio input needs two clicks: JS handler binds click instead of change [RESOLVED]
 
-[Issue #31](https://github.com/MMVverse/MMVshiny/issues/31) | assignee: venelin | 2026-11-03 | fixed on branch `bugfix/31-radio-change-event` in v1.8.1 (PR pending)
+[Issue #31](https://github.com/MMVverse/MMVshiny/issues/31) | assignee: venelin | 2026-11-03 | resolved 2026-11-03 in v1.8.1 (PR #32)
 
 `GenerateJavaScriptEventHandlers()` bound radio inputs to `click`, which fires before Shiny receives the new value, so the server processed the previous `input$ID` (first click ignored, GUI could snap back). Now bound to `change`. The demo app gains a radio input (`Intake`). First seen in MMVSola#248.
 
