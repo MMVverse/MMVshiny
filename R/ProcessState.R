@@ -1634,7 +1634,7 @@ CreateUIInput <- function(state, id, spec = state$spec, useLabel = TRUE, iconVal
 #'
 #' @details
 #' For each input id, this generates a small counter (\code{n<ID>}) bound to that input's own
-#' native browser event - \code{change} for select/checkbox inputs, \code{click} for radio/action
+#' native browser event - \code{change} for select/checkbox/radio inputs, \code{click} for action
 #' button inputs, \code{blur}/\code{keyup} (Enter) for numeric/text inputs - and reported to the
 #' server as \code{input$count<ID>}, incremented on every such event.
 #'
@@ -1710,9 +1710,10 @@ GenerateJavaScriptEventHandlers <- function(spec, ids = spec[grepl("input", TYPE
   
   codeRadioInput <- 
     'var nID = 0;
-   // create a handler 
-   $("#ID").bind("click", function(e) {
-     // increment the counter each time input is clicked
+   // create a handler. Bind to "change", not "click": a click on a radio fires before Shiny has
+   // received the new value, so the server would read the previous input$ID (see issue #31).
+   $("#ID").bind("change", function(e) {
+     // increment the counter each time the selected radio option changes
      nID++;
      Shiny.onInputChange("countID", nID);
    });
