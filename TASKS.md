@@ -9,6 +9,12 @@
 
 ---
 
+## Radio input needs two clicks: JS handler binds click instead of change
+
+[Issue #31](https://github.com/MMVverse/MMVshiny/issues/31) | assignee: venelin | 2026-11-03 | fixed on branch `bugfix/31-radio-change-event` in v1.8.1 (PR pending)
+
+`GenerateJavaScriptEventHandlers()` bound radio inputs to `click`, which fires before Shiny receives the new value, so the server processed the previous `input$ID` (first click ignored, GUI could snap back). Now bound to `change`. The demo app gains a radio input (`Intake`). First seen in MMVSola#248.
+
 ## Persist the state snapshot cache on disk to speed up cold starts [RESOLVED]
 
 [Issue #29](https://github.com/MMVverse/MMVshiny/issues/29) | assignee: venelin | 2026-10-15 | resolved 2026-10-15 in v1.7.0

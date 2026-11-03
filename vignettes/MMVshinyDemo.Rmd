@@ -87,7 +87,9 @@ Below is a practical description of the columns you will most commonly use.
   A `checkbox input` row renders as `checkboxInput()` and its reactive getter returns a logical
   (`TRUE`/`FALSE`). The default value is set via `VALEXPR` (e.g. `"TRUE"` for an initially-checked box).
 - **`RADIOVALUES`**: options for radio/select inputs. In the demo it uses the format
-  `Once daily:Twice daily`.
+  `Once daily:Twice daily`. The demo has one `select input` (`Regimen`) and one
+  `radio input` (`Intake`, options `With food:Fasted:Either`); a single click on a radio option
+  must be enough to change the value (see NEWS, 1.8.1).
 
 #### Units and formatting
 
@@ -295,6 +297,7 @@ tags$table(
   tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Weight_kg",  useLabel = TRUE)),
   tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Height_cm",  useLabel = TRUE)),
   tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Regimen",    useLabel = TRUE)),
+  tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "Intake",     useLabel = TRUE)),
   tags$tr(MMVshiny::CreateUIInput(spec = stateSpec, id = "ShowCurve",  useLabel = TRUE))
 )
 

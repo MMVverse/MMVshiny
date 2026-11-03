@@ -28,7 +28,7 @@ Generate JS code for event handlers on the client's browser side
 }
 \details{
 For each input id, this generates a small counter (\code{n<ID>}) bound to that input's own
-native browser event - \code{change} for select/checkbox inputs, \code{click} for radio/action
+native browser event - \code{change} for select/checkbox/radio inputs, \code{click} for action
 button inputs, \code{blur}/\code{keyup} (Enter) for numeric/text inputs - and reported to the
 server as \code{input$count<ID>}, incremented on every such event.
 
