@@ -1,3 +1,7 @@
+# MMVshiny 1.9.0
+
+* Status icon for default notes (#33): when the source of an input is "Default value", a `WARN:` or `ERROR:` prefix in its default note (`DEFAULTVALUENOTE`) now gives the orange or red status icon, like the validation, valid-range, `MINNOTE` and `MAXNOTE` notes, and the prefix is removed from the tooltip title. Notes without a prefix behave as before (blue info icon). Lets an app say, in the default note, that a default could not be predicted (MMVSola#249) instead of misusing `MINNOTE`.
+
 # MMVshiny 1.8.1
 
 * Fix (#31): a radio input needed two clicks to take effect. `GenerateJavaScriptEventHandlers()` bound radio inputs to the native `click` event, which fires before Shiny has received the new value, so `ProcessGuiInputEvent()` read the previous `input$<ID>`: the first click was ignored and the radio could snap back to its old option. Radio inputs are now bound to `change`, like select and checkbox inputs. Regenerate the JS handlers (they are regenerated at app start). The demo app gains a radio input (`Intake`).

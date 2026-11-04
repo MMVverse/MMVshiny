@@ -16,7 +16,8 @@ specification. It is expected that the file contains at least the following colu
 \item VALEXPR: This column is used in the creation of the ExprVAL reactive
 expression column.
 \item DEFAULTVALUENOTE: This column is used in the creation of the ExprDEFNOTE
-reactive expression column. It is passed to the ParseValExpr function.
+reactive expression column. It is passed to the ParseValExpr function. A note starting with
+"WARN:" or "ERROR:" turns the status icon of a default value orange or red.
 \item MIN: This column is used in the creation of the ExprMIN reactive expression
 column, but only for rows where the type is "numeric input".
 \item MINNOTE: This column is used in the creation of the ExprMINNOTE reactive
