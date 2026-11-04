@@ -20,7 +20,8 @@
 #'   - VALEXPR: This column is used in the creation of the ExprVAL reactive 
 #' expression column. 
 #'   - DEFAULTVALUENOTE: This column is used in the creation of the ExprDEFNOTE 
-#' reactive expression column. It is passed to the ParseValExpr function.
+#' reactive expression column. It is passed to the ParseValExpr function. A note starting with
+#' "WARN:" or "ERROR:" turns the status icon of a default value orange or red.
 #'   - MIN: This column is used in the creation of the ExprMIN reactive expression 
 #' column, but only for rows where the type is "numeric input". 
 #'   - MINNOTE: This column is used in the creation of the ExprMINNOTE reactive 
@@ -2204,8 +2205,11 @@ SetInfoIcon <- function(state, id, spec = state$spec) {
   status <- state%>%GetStatus(id)
   source <- status$source
   
-  statusTitle <- if( startsWith(tolower(source), "default") ) {
-    GetDefaultNote(state, id)
+  # The default note says where a default value comes from. Like the other notes it may start with
+  # "WARN:" or "ERROR:" (e.g. no prediction is available), which then also sets the icon.
+  defaultNote <- if( startsWith(tolower(source), "default") ) GetDefaultNote(state, id) else NULL
+  statusTitle <- if( !is.null(defaultNote) ) {
+    gsub(pattern = "^WARN: |^ERROR: ", replacement = "", x = defaultNote)
   } else {
     source
   }
@@ -2215,16 +2219,15 @@ SetInfoIcon <- function(state, id, spec = state$spec) {
     GetValidationNote(state = state, id = id)
   }
   
+  allNotes <- as.character(c(statusText, defaultNote))
+  hasWARN <- isTRUE(any(startsWith(allNotes, "WARN:")))
+  hasERROR <- isTRUE(any(startsWith(allNotes, "ERROR:")))
   if(!is.null(statusText)) {
     hasOK <- isTRUE(any(sapply(statusText, startsWith, "OK:")))
-    hasWARN <- isTRUE(any(sapply(statusText, startsWith, "WARN:")))
-    hasERROR <- isTRUE(any(sapply(statusText, startsWith, "ERROR:")))
     statusText <- gsub(pattern = "^OK: |^WARN: |^ERROR: ", replacement = "", x = statusText)
     statusText <- paste0(na.omit(statusText), collapse = "\n")
   } else {
     hasOK <- FALSE
-    hasWARN <- FALSE
-    hasERROR <- FALSE
   }
   
   state$statusTitle[[id]] <- statusTitle

@@ -2,12 +2,21 @@
 
 ## Plan of Action – Open Tasks Prioritization
 
-1. [Issue #22](https://github.com/MMVverse/MMVshiny/issues/22) — Group presentation reactives/observers and delegate colour/status icon to the client
-2. [Issue #4](https://github.com/MMVverse/MMVshiny/issues/4) — Document `compoundActivationTrigger` pattern for per-compound reactives that use `isolate()`
-3. [Issue #3](https://github.com/MMVverse/MMVshiny/issues/3) — `GenerateHandleEventsJS`: add `FLAG_UseStaticBind` for dynamically created inputs
-4. [Issue #1](https://github.com/MMVverse/MMVshiny/issues/1) — Add state-level status (disable report generation for invalid states)
+1. [Issue #33](https://github.com/MMVverse/MMVshiny/issues/33) — Status icon ignores WARN:/ERROR: prefix in the default-value note
+2. [Issue #22](https://github.com/MMVverse/MMVshiny/issues/22) — Group presentation reactives/observers and delegate colour/status icon to the client
+3. [Issue #4](https://github.com/MMVverse/MMVshiny/issues/4) — Document `compoundActivationTrigger` pattern for per-compound reactives that use `isolate()`
+4. [Issue #3](https://github.com/MMVverse/MMVshiny/issues/3) — `GenerateHandleEventsJS`: add `FLAG_UseStaticBind` for dynamically created inputs
+5. [Issue #1](https://github.com/MMVverse/MMVshiny/issues/1) — Add state-level status (disable report generation for invalid states)
 
 ---
+
+---
+
+## Status icon ignores WARN:/ERROR: prefix in the default-value note
+
+[Issue #33](https://github.com/MMVverse/MMVshiny/issues/33) | assignee: venelin | 2026-11-04 | fix in 1.9.0 (branch feature/33-default-note-warn-icon)
+
+`SetInfoIcon()` now also scans the default note when the source is "Default value": `WARN:`/`ERROR:` gives the orange/red icon and the prefix is stripped from the title. Needed by MMVSola#249 (allometry cannot predict human CL).
 
 ## Radio input needs two clicks: JS handler binds click instead of change [RESOLVED]
 
