@@ -831,11 +831,11 @@ GetMinNote <- function(state, id, spec = state$spec) {
         as.character(state$minNote[[id]])
       }
     } else {
-      res <- try(as.character(spec[.(id), MIN, on = "ID"]), silent = TRUE)
+      res <- try(as.character(spec[.(id), MINNOTE, on = "ID"]), silent = TRUE)
       if(is.character(res)) {
         res
       } else {
-        NA_real_
+        NA_character_
       }
     }
   } else {
@@ -2199,6 +2199,30 @@ GenerateScriptCreatingReactives <- function(
   filename
 }
 
+#' Refresh the status icon of an input from its current status and notes
+#'
+#' Sets the icon class, colour, title and text of the status icon of an input from its source
+#' (see [GetStatus()]) and its validation, valid-range, MINNOTE, MAXNOTE and, when the source is a
+#' default value, default notes. A note starting with `ERROR:` gives the red icon, `WARN:` the orange
+#' one, `OK:` the green one, and a default value without warnings the blue info icon.
+#'
+#' Call it after [SetStatus()] to make a changed status visible, e.g. in the `onError` handler of an
+#' observer that records an `ERROR:` validation note. The generated observers and reactives do this.
+#'
+#' @param state the state object.
+#' @param id character string, the id of an input parameter (a numeric, text, radio, select or
+#'   checkbox input with a status icon).
+#' @param spec the parameter specification table. Default: `state$spec`.
+#' @return No useful value (the value of the last assignment, invisibly). Called for its side effect
+#'   of updating `state$statusIconClass[[id]]`, `state$statusIconColor[[id]]`,
+#'   `state$statusTitle[[id]]` and `state$statusText[[id]]`.
+#' @examples
+#' \dontrun{
+#'   # in the onError handler of an observer processing the input `HillIN`
+#'   state %>% SetStatus("HillIN", validationNote = "ERROR: something went wrong")
+#'   state %>% SetInfoIcon("HillIN")
+#' }
+#' @export
 SetInfoIcon <- function(state, id, spec = state$spec) {
   
   type <- state%>%GetType(id)
