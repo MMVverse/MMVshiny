@@ -1,3 +1,8 @@
+# MMVshiny 1.9.1
+
+* Fix (#36): `SetInfoIcon()` is now exported. The generated `onError` handlers (observers, reactives) and apps call it, but it was internal, so the call failed with "could not find function" after `SetStatus()` had recorded the error, and the status icon was never refreshed. Documented, with a test that it is exported and callable unqualified.
+* Fix (#35): `GetMinNote()` without a `state` read the `MIN` column instead of `MINNOTE` and returned `NA_real_` instead of `NA_character_` when there was no value. It now reads `MINNOTE`, like `GetMaxNote()`.
+
 # MMVshiny 1.9.0
 
 * Status icon for default notes (#33): when the source of an input is "Default value", a `WARN:` or `ERROR:` prefix in its default note (`DEFAULTVALUENOTE`) now gives the orange or red status icon, like the validation, valid-range, `MINNOTE` and `MAXNOTE` notes, and the prefix is removed from the tooltip title. Notes without a prefix behave as before (blue info icon). Lets an app say, in the default note, that a default could not be predicted (MMVSola#249) instead of misusing `MINNOTE`.
